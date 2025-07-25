@@ -21,6 +21,8 @@ export async function analyzeWithCsFlow(cameraFeedDataUri: string): Promise<CsFl
     'src/python/analyze_cs_flow.py',
     '--image',
     imagePath,
+    '--model',
+    'model.pth',
   ]);
   return JSON.parse(stdout.trim());
 }
@@ -34,7 +36,13 @@ export async function trainCsFlow(referenceImages: string[]): Promise<string> {
     await writeFile(path, buffer);
     imagePaths.push(path);
   }
-  const args = ['src/python/train_cs_flow.py', '--output', 'model.pth', ...imagePaths];
+  const modelPath = join(tmpdir(), `csflow-model-${Date.now()}.pth`);
+  const args = [
+    'src/python/train_cs_flow.py',
+    '--output',
+    modelPath,
+    ...imagePaths,
+  ];
   const {stdout} = await execFileAsync('python3', args);
   const result = JSON.parse(stdout.trim());
   return result.modelId;
