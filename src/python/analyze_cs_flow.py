@@ -44,7 +44,7 @@ def main() -> None:
 
     import config as c  # type: ignore
     import freia_funcs  # type: ignore
-    from model import FeatureExtractor, load_model, nf_forward  # type: ignore
+    from model import FeatureExtractor, nf_forward  # type: ignore
 
     c.device = "cpu"
     c.pre_extracted = False
@@ -55,8 +55,9 @@ def main() -> None:
     # allow loading the custom ReversibleGraphNet class used by CS-Flow
     add_safe_globals([freia_funcs.ReversibleGraphNet])
 
+    model_file = Path("models") / "tmp" / Path(args.model).name
     with redirect_stdout(sys.stderr):
-        model = load_model(Path(args.model).name)
+        model = torch.load(model_file, weights_only=False)
     model.eval()
     model.to("cpu")
 
