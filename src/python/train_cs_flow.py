@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import os
 from pathlib import Path
 
 try:
@@ -39,6 +40,8 @@ def main() -> None:
     ensure_repo(repo_dir)
 
     sys.path.insert(0, str(repo_dir))
+    # run training inside the repo directory so relative paths match
+    os.chdir(repo_dir)
     import config as c  # type: ignore
     from train import train as cs_train  # type: ignore
     from utils import load_datasets, make_dataloaders  # type: ignore

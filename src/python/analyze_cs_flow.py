@@ -5,6 +5,7 @@ import argparse
 import base64
 import io
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -38,6 +39,8 @@ def main() -> None:
     repo_dir = Path(__file__).resolve().parent / "cs_flow_repo"
     ensure_repo(repo_dir)
     sys.path.insert(0, str(repo_dir))
+    # ensure model paths resolve correctly
+    os.chdir(repo_dir)
 
     import config as c  # type: ignore
     from model import FeatureExtractor, load_model, nf_forward  # type: ignore
