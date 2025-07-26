@@ -37,7 +37,10 @@ def patch_training_code(repo_dir: Path) -> None:
     if "safe_roc_auc_score" in text:
         return
     replacement = (
-        "from sklearn.metrics import roc_auc_score\n\n"
+        "from sklearn.metrics import roc_auc_score\n"
+        "from sklearn.exceptions import UndefinedMetricWarning\n"
+        "import warnings\n"
+        "warnings.filterwarnings('ignore', category=UndefinedMetricWarning)\n\n"
         "def safe_roc_auc_score(y_true, y_score):\n"
         "    try:\n"
         "        return roc_auc_score(y_true, y_score)\n"
