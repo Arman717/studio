@@ -14,7 +14,10 @@ export interface CsFlowResult {
   screwStatus: string;
 }
 
-export async function analyzeWithCsFlow(cameraFeedDataUri: string): Promise<CsFlowResult> {
+export async function analyzeWithCsFlow(
+  cameraFeedDataUri: string,
+  modelPath: string,
+): Promise<CsFlowResult> {
   const [, data] = cameraFeedDataUri.split(',');
   const buffer = Buffer.from(data, 'base64');
   const imagePath = join(tmpdir(), `csflow-${Date.now()}.png`);
@@ -24,7 +27,7 @@ export async function analyzeWithCsFlow(cameraFeedDataUri: string): Promise<CsFl
     '--image',
     imagePath,
     '--model',
-    'model.pth',
+    modelPath,
   ]);
   return JSON.parse(stdout.trim());
 }
