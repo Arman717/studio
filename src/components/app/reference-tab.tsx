@@ -95,7 +95,7 @@ export function ReferenceTab({ onModelTrained }: ReferenceTabProps) {
   };
 
   useEffect(() => {
-    let timer: NodeJS.Timer | undefined;
+    let timer: NodeJS.Timeout | undefined;
     if (isLoading) {
       timer = setInterval(() => {
         setProgress(prev => (prev >= 95 ? 95 : prev + 1));
