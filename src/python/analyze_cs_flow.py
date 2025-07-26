@@ -97,7 +97,7 @@ def main() -> None:
 
         cmap = plt.get_cmap("viridis")
         colored = (cmap(heatmap_norm)[:, :, :3] * 255).astype("uint8")
-        heat_img = Image.fromarray(colored)
+        heat_img = Image.fromarray(colored).resize(img.size)
         overlay = Image.blend(img.convert("RGB"), heat_img, alpha=0.5)
         buf = io.BytesIO()
         overlay.save(buf, format="PNG")
