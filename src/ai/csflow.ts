@@ -11,6 +11,7 @@ function runPython(args: string[]): Promise<string> {
     const child = spawn(PYTHON_CMD, args, {stdio: ['ignore', 'pipe', 'inherit']});
     let output = '';
     child.stdout.on('data', (d) => {
+      process.stdout.write(d);
       output += d.toString();
     });
     child.on('error', reject);
