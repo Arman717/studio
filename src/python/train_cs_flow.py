@@ -30,6 +30,27 @@ def ensure_repo(repo_dir: Path) -> None:
     )
 
 
+def patch_training_code(repo_dir: Path) -> None:
+    """Patch cs-flow to avoid roc_auc_score errors when only one class is present."""
+    train_py = repo_dir / "train.py"
+    text = train_py.read_text()
+    if "safe_roc_auc_score" in text:
+        return
+    replacement = (
+        "from sklearn.metrics import roc_auc_score\n\n"
+        "def safe_roc_auc_score(y_true, y_score):\n"
+        "    try:\n"
+        "        return roc_auc_score(y_true, y_score)\n"
+        "    except ValueError:\n"
+        "        return float('nan')\n"
+    )
+    text = text.replace(
+        "from sklearn.metrics import roc_auc_score", replacement, 1
+    )
+    text = text.replace("roc_auc_score(is_anomaly, anomaly_score)", "safe_roc_auc_score(is_anomaly, anomaly_score)")
+    train_py.write_text(text)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Train cs-flow model")
     parser.add_argument("--output", required=True, help="Output model path")
@@ -38,6 +59,7 @@ def main() -> None:
 
     repo_dir = Path(__file__).resolve().parent / "cs_flow_repo"
     ensure_repo(repo_dir)
+    patch_training_code(repo_dir)
 
     sys.path.insert(0, str(repo_dir))
     # run training inside the repo directory so relative paths match
