@@ -76,12 +76,39 @@ def main() -> None:
     with torch.no_grad():
         img_tensor = tf(img).unsqueeze(0)
         feats = fe(img_tensor)
-        z, jac = nf_forward(model, feats)
-        score = torch.mean(z[0] ** 2 / 2).item()
+        z, _jac = nf_forward(model, feats)
+
+        # compute per-pixel likelihood maps for all scales and upsample
+        likelihood_maps = []
+        for zi in z:
+            like = torch.mean(zi ** 2, dim=1, keepdim=True)
+            up = torch.nn.functional.interpolate(
+                like, size=img_tensor.shape[2:], mode="bilinear", align_corners=False
+            )
+            likelihood_maps.append(up)
+
+        heatmap = torch.sum(torch.stack(likelihood_maps), dim=0)[0, 0]
+        heatmap_np = heatmap.cpu().numpy()
+        heatmap_norm = (heatmap_np - heatmap_np.min()) / (
+            heatmap_np.max() - heatmap_np.min() + 1e-8
+        )
+
+        import matplotlib.pyplot as plt
+
+        cmap = plt.get_cmap("viridis")
+        colored = (cmap(heatmap_norm)[:, :, :3] * 255).astype("uint8")
+        heat_img = Image.fromarray(colored)
+        overlay = Image.blend(img.convert("RGB"), heat_img, alpha=0.5)
+        buf = io.BytesIO()
+        overlay.save(buf, format="PNG")
+        b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+
+        flat = torch.cat([m.reshape(m.shape[0], -1) for m in z], dim=1)
+        score = torch.mean(flat ** 2 / 2).item()
 
     result = {
         "defectDetected": score > 2.5,
-        "defectVisualizationDataUri": "",
+        "defectVisualizationDataUri": f"data:image/png;base64,{b64}",
         "screwStatus": "NOK" if score > 2.5 else "OK",
     }
     print(json.dumps(result))
