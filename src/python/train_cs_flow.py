@@ -80,10 +80,17 @@ def main() -> None:
     train_good.mkdir(parents=True, exist_ok=True)
     test_good.mkdir(parents=True, exist_ok=True)
 
-    for idx, img in enumerate(args.images):
+    test_count = min(2, len(args.images))
+    train_imgs = args.images[:-test_count] if len(args.images) > test_count else []
+    test_imgs = args.images[-test_count:]
+
+    for idx, img in enumerate(train_imgs):
         dest = train_good / f"img_{idx}.png"
         shutil.copy(img, dest)
-        shutil.copy(dest, test_good / dest.name)
+
+    for idx, img in enumerate(test_imgs):
+        dest = test_good / f"img_{idx}.png"
+        shutil.copy(img, dest)
 
     train_set, test_set = load_datasets(c.dataset_path, c.class_name)
     train_loader, test_loader = make_dataloaders(train_set, test_set)
