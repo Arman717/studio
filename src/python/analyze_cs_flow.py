@@ -48,7 +48,10 @@ def main() -> None:
     c.device = "cpu"
     c.pre_extracted = False
 
-    model = load_model(Path(args.model).name)
+    from contextlib import redirect_stdout
+
+    with redirect_stdout(sys.stderr):
+        model = load_model(Path(args.model).name)
     model.eval()
     model.to("cpu")
 

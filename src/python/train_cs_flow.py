@@ -65,7 +65,11 @@ def main() -> None:
 
     train_set, test_set = load_datasets(c.dataset_path, c.class_name)
     train_loader, test_loader = make_dataloaders(train_set, test_set)
-    cs_train(train_loader, test_loader)
+    # redirect training logs to stderr so stdout contains only JSON
+    from contextlib import redirect_stdout
+
+    with redirect_stdout(sys.stderr):
+        cs_train(train_loader, test_loader)
 
     model_path = repo_dir / "models" / "tmp" / c.modelname
     shutil.copy(model_path, args.output)

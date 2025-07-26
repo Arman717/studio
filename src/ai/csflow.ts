@@ -29,7 +29,8 @@ export async function analyzeWithCsFlow(
     '--model',
     modelPath,
   ]);
-  return JSON.parse(stdout.trim());
+  const lines = stdout.trim().split(/\r?\n/);
+  return JSON.parse(lines[lines.length - 1]);
 }
 
 export async function trainCsFlow(referenceImages: string[]): Promise<string> {
@@ -49,6 +50,7 @@ export async function trainCsFlow(referenceImages: string[]): Promise<string> {
     ...imagePaths,
   ];
   const {stdout} = await execFileAsync(PYTHON_CMD, args);
-  const result = JSON.parse(stdout.trim());
+  const lines = stdout.trim().split(/\r?\n/);
+  const result = JSON.parse(lines[lines.length - 1]);
   return result.modelId;
 }
