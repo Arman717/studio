@@ -26,6 +26,7 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { fileToBase64 } from "@/lib/utils";
 import { Bot, CheckCircle, Loader2, Upload } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
 import Image from "next/image";
 
 const formSchema = z.object({
@@ -48,6 +49,7 @@ type ReferenceTabProps = {
 
 export function ReferenceTab({ onModelTrained }: ReferenceTabProps) {
   const [isLoading, setIsLoading] = useState(false);
+  const [progress, setProgress] = useState(0);
   const [trainedModelId, setTrainedModelId] = useState<string | null>(null);
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
   const { toast } = useToast();
@@ -61,6 +63,7 @@ export function ReferenceTab({ onModelTrained }: ReferenceTabProps) {
 
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
     setIsLoading(true);
+    setProgress(0);
     setTrainedModelId(null);
     try {
       const imageFiles = Array.from(values.referenceImages);
@@ -90,6 +93,20 @@ export function ReferenceTab({ onModelTrained }: ReferenceTabProps) {
       setIsLoading(false);
     }
   };
+
+  useEffect(() => {
+    let timer: NodeJS.Timer | undefined;
+    if (isLoading) {
+      timer = setInterval(() => {
+        setProgress(prev => (prev >= 95 ? 95 : prev + 1));
+      }, 200);
+    } else {
+      setProgress(100);
+    }
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [isLoading]);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
@@ -193,6 +210,9 @@ export function ReferenceTab({ onModelTrained }: ReferenceTabProps) {
                 "Train Model"
               )}
             </Button>
+            {isLoading && (
+              <Progress value={progress} className="w-full mt-4" />
+            )}
           </CardFooter>
         </form>
       </Form>
