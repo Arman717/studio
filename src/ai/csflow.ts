@@ -6,6 +6,8 @@ import {writeFile} from 'fs/promises';
 
 const execFileAsync = promisify(execFile);
 
+const PYTHON_CMD = process.env.PYTHON ?? 'python3';
+
 export interface CsFlowResult {
   defectDetected: boolean;
   defectVisualizationDataUri?: string;
@@ -17,7 +19,7 @@ export async function analyzeWithCsFlow(cameraFeedDataUri: string): Promise<CsFl
   const buffer = Buffer.from(data, 'base64');
   const imagePath = join(tmpdir(), `csflow-${Date.now()}.png`);
   await writeFile(imagePath, buffer);
-  const {stdout} = await execFileAsync('python3', [
+  const {stdout} = await execFileAsync(PYTHON_CMD, [
     'src/python/analyze_cs_flow.py',
     '--image',
     imagePath,
@@ -43,7 +45,7 @@ export async function trainCsFlow(referenceImages: string[]): Promise<string> {
     modelPath,
     ...imagePaths,
   ];
-  const {stdout} = await execFileAsync('python3', args);
+  const {stdout} = await execFileAsync(PYTHON_CMD, args);
   const result = JSON.parse(stdout.trim());
   return result.modelId;
 }

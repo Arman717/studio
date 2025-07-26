@@ -10,8 +10,15 @@ import sys
 from pathlib import Path
 
 from PIL import Image
-import torch
-from torchvision import transforms
+try:
+    import torch
+    from torchvision import transforms
+except ModuleNotFoundError as e:
+    print(
+        "Missing dependencies. Please install PyTorch and torchvision as listed in cs-flow requirements.",
+        file=sys.stderr,
+    )
+    raise
 
 
 def ensure_repo(repo_dir: Path) -> None:

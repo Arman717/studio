@@ -9,6 +9,16 @@ import sys
 import tempfile
 from pathlib import Path
 
+try:
+    import torch
+    from torchvision import transforms  # noqa: F401
+except ModuleNotFoundError:
+    print(
+        "Missing dependencies. Please install PyTorch and torchvision as listed in cs-flow requirements.",
+        file=sys.stderr,
+    )
+    raise
+
 
 def ensure_repo(repo_dir: Path) -> None:
     """Clone the cs-flow repository if it doesn't exist."""
