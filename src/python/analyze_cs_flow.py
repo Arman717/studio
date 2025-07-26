@@ -74,7 +74,8 @@ def main() -> None:
 
     img = Image.open(args.image).convert("RGB")
     with torch.no_grad():
-        feats = [fe.eff_ext(tf(img).unsqueeze(0))]
+        img_tensor = tf(img).unsqueeze(0)
+        feats = fe(img_tensor)
         z, jac = nf_forward(model, feats)
         score = torch.mean(z[0] ** 2 / 2).item()
 
