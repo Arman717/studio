@@ -13,6 +13,9 @@ required. Set the `PYTHON` environment variable if you want to use a custom
 Python interpreter. The scripts will automatically use CUDA if available,
 falling back to the CPU otherwise.
 
+The training wrapper patches CS-Flow's `train.py` so AUROC remains a neutral
+0.5 when the dataset only contains one class and noisy warnings are suppressed.
+
 Training and analysis logs from the Python scripts are streamed to your
 terminal when running the Next.js server so you can monitor progress.
 
