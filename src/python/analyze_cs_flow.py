@@ -46,7 +46,7 @@ def main() -> None:
     import freia_funcs  # type: ignore
     from model import FeatureExtractor, nf_forward  # type: ignore
 
-    c.device = "cpu"
+    c.device = "cuda" if torch.cuda.is_available() else "cpu"
     c.pre_extracted = False
 
     from torch.serialization import add_safe_globals  # type: ignore
@@ -59,10 +59,11 @@ def main() -> None:
     with redirect_stdout(sys.stderr):
         model = torch.load(model_file, weights_only=False)
     model.eval()
-    model.to("cpu")
+    model.to(c.device)
 
     fe = FeatureExtractor()
     fe.eval()
+    fe.to(c.device)
 
     tf = transforms.Compose(
         [
@@ -74,7 +75,7 @@ def main() -> None:
 
     img = Image.open(args.image).convert("RGB")
     with torch.no_grad():
-        img_tensor = tf(img).unsqueeze(0)
+        img_tensor = tf(img).unsqueeze(0).to(c.device)
         feats = fe(img_tensor)
         z, _jac = nf_forward(model, feats)
 

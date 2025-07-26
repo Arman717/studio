@@ -46,7 +46,7 @@ def main() -> None:
     from train import train as cs_train  # type: ignore
     from utils import load_datasets, make_dataloaders  # type: ignore
 
-    c.device = "cpu"
+    c.device = "cuda" if torch.cuda.is_available() else "cpu"
     c.dataset_path = tempfile.mkdtemp()
     c.class_name = "custom"
     c.modelname = Path(args.output).name

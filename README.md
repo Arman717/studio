@@ -10,7 +10,8 @@ returns a heatmap overlay image highlighting detected anomalies.
 Ensure your Python environment has the dependencies listed in CS-Flow's
 `requirements.txt` installed. In particular, `torch` and `torchvision` are
 required. Set the `PYTHON` environment variable if you want to use a custom
-Python interpreter.
+Python interpreter. The scripts will automatically use CUDA if available,
+falling back to the CPU otherwise.
 
 Training and analysis logs from the Python scripts are streamed to your
 terminal when running the Next.js server so you can monitor progress.
