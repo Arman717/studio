@@ -12,4 +12,7 @@ Ensure your Python environment has the dependencies listed in CS-Flow's
 required. Set the `PYTHON` environment variable if you want to use a custom
 Python interpreter.
 
+Training and analysis logs from the Python scripts are streamed to your
+terminal when running the Next.js server so you can monitor progress.
+
 To get started, take a look at `src/app/page.tsx`.

@@ -1,12 +1,28 @@
-import {execFile} from 'child_process';
-import {promisify} from 'util';
+import {spawn} from 'child_process';
 import {tmpdir} from 'os';
 import {join} from 'path';
 import {writeFile} from 'fs/promises';
 
-const execFileAsync = promisify(execFile);
 
 const PYTHON_CMD = process.env.PYTHON ?? 'python3';
+
+function runPython(args: string[]): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(PYTHON_CMD, args, {stdio: ['ignore', 'pipe', 'inherit']});
+    let output = '';
+    child.stdout.on('data', (d) => {
+      output += d.toString();
+    });
+    child.on('error', reject);
+    child.on('close', (code) => {
+      if (code === 0) {
+        resolve(output);
+      } else {
+        reject(new Error(`Python exited with code ${code}`));
+      }
+    });
+  });
+}
 
 export interface CsFlowResult {
   defectDetected: boolean;
@@ -22,7 +38,7 @@ export async function analyzeWithCsFlow(
   const buffer = Buffer.from(data, 'base64');
   const imagePath = join(tmpdir(), `csflow-${Date.now()}.png`);
   await writeFile(imagePath, buffer);
-  const {stdout} = await execFileAsync(PYTHON_CMD, [
+  const stdout = await runPython([
     'src/python/analyze_cs_flow.py',
     '--image',
     imagePath,
@@ -49,7 +65,7 @@ export async function trainCsFlow(referenceImages: string[]): Promise<string> {
     modelPath,
     ...imagePaths,
   ];
-  const {stdout} = await execFileAsync(PYTHON_CMD, args);
+  const stdout = await runPython(args);
   const lines = stdout.trim().split(/\r?\n/);
   const result = JSON.parse(lines[lines.length - 1]);
   return result.modelId;
