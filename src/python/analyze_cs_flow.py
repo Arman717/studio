@@ -78,19 +78,15 @@ def main() -> None:
         feats = fe(img_tensor)
         z, _jac = nf_forward(model, feats)
 
-        # compute per-pixel likelihood maps for all scales and upsample
-        likelihood_maps = []
-        for zi in z:
-            like = torch.mean(zi ** 2, dim=1, keepdim=True)
-            up = torch.nn.functional.interpolate(
-                like, size=img_tensor.shape[2:], mode="bilinear", align_corners=False
-            )
-            likelihood_maps.append(up)
-
-        heatmap = torch.sum(torch.stack(likelihood_maps), dim=0)[0, 0]
-        heatmap_np = heatmap.cpu().numpy()
+        # compute likelihood map from the finest scale
+        z_grouped = [zi.view(-1, *zi.shape[1:]) for zi in z]
+        like = torch.mean(z_grouped[0] ** 2, dim=1, keepdim=True)
+        map_up = torch.nn.functional.interpolate(
+            like, size=c.img_size, mode="bilinear", align_corners=False
+        )
+        heatmap_np = map_up[0, 0].cpu().numpy()
         heatmap_norm = (heatmap_np - heatmap_np.min()) / (
-            heatmap_np.max() - heatmap_np.min() + 1e-8
+            heatmap_np.max() - heatmap_np.min() + 1e-6
         )
 
         import matplotlib.pyplot as plt
