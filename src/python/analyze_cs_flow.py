@@ -44,7 +44,8 @@ def main() -> None:
 
     import config as c  # type: ignore
     import freia_funcs  # type: ignore
-    from model import FeatureExtractor, nf_forward  # type: ignore
+    from model import FeatureExtractor  # type: ignore
+    from utils import concat_maps  # type: ignore
 
     c.device = "cuda" if torch.cuda.is_available() else "cpu"
     c.pre_extracted = False
@@ -77,7 +78,7 @@ def main() -> None:
     with torch.no_grad():
         img_tensor = tf(img).unsqueeze(0).to(c.device)
         feats = fe(img_tensor)
-        z, _jac = nf_forward(model, feats)
+        z = model(feats)
 
         # compute likelihood map from the finest scale
         z_grouped = [zi.view(-1, *zi.shape[1:]) for zi in z]
@@ -100,8 +101,8 @@ def main() -> None:
         overlay.save(buf, format="PNG")
         b64 = base64.b64encode(buf.getvalue()).decode("ascii")
 
-        flat = torch.cat([m.reshape(m.shape[0], -1) for m in z], dim=1)
-        score = torch.mean(flat ** 2 / 2).item()
+        z_concat = concat_maps(z)
+        score = torch.mean(z_concat ** 2 / 2, dim=(1, 2)).item()
 
     result = {
         "defectDetected": score > 2.5,
