@@ -27,6 +27,7 @@ import { useToast } from "@/hooks/use-toast";
 import { fileToBase64 } from "@/lib/utils";
 import { Bot, CheckCircle, Loader2, Upload } from "lucide-react";
 import Image from "next/image";
+import { TrainingDialog } from "@/components/app/training-dialog";
 
 const formSchema = z.object({
   referenceImages: z
@@ -101,7 +102,9 @@ export function ReferenceTab({ onModelTrained }: ReferenceTabProps) {
   };
 
   return (
-    <Card className="max-w-3xl mx-auto shadow-lg">
+    <>
+      <TrainingDialog open={isLoading} />
+      <Card className="max-w-3xl mx-auto shadow-lg">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-xl font-headline">
           <Bot />
@@ -197,5 +200,6 @@ export function ReferenceTab({ onModelTrained }: ReferenceTabProps) {
         </form>
       </Form>
     </Card>
+    </>
   );
 }
