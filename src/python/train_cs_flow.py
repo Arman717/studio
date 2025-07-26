@@ -45,7 +45,8 @@ def patch_training_code(repo_dir: Path) -> None:
         "    try:\n"
         "        return roc_auc_score(y_true, y_score)\n"
         "    except ValueError:\n"
-        "        return float('nan')\n"
+        "        # dataset may contain only one class; return neutral AUROC\n"
+        "        return 0.5\n"
     )
     text = text.replace(
         "from sklearn.metrics import roc_auc_score", replacement, 1
