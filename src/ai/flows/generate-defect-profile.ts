@@ -8,7 +8,7 @@
  * - GenerateDefectProfileOutput - The return type for the generateDefectProfile function.
  */
 
-import {ai} from '@/ai/genkit';
+import {trainCsFlow} from '@/ai/csflow';
 import {z} from 'genkit';
 
 const GenerateDefectProfileInputSchema = z.object({
@@ -26,30 +26,6 @@ const GenerateDefectProfileOutputSchema = z.object({
 export type GenerateDefectProfileOutput = z.infer<typeof GenerateDefectProfileOutputSchema>;
 
 export async function generateDefectProfile(input: GenerateDefectProfileInput): Promise<GenerateDefectProfileOutput> {
-  return generateDefectProfileFlow(input);
+  const modelId = await trainCsFlow(input.referenceImages);
+  return {modelId};
 }
-
-const prompt = ai.definePrompt({
-  name: 'generateDefectProfilePrompt',
-  input: {schema: GenerateDefectProfileInputSchema},
-  output: {schema: GenerateDefectProfileOutputSchema},
-  prompt: `You are an AI model trainer. You will receive a set of images of defect-free screws. You will train a model based on these images to create a \"normal\" profile. The model ID will be returned.
-
-Images:{{#each referenceImages}} {{media url=this}} {{/each}}`,
-});
-
-const generateDefectProfileFlow = ai.defineFlow(
-  {
-    name: 'generateDefectProfileFlow',
-    inputSchema: GenerateDefectProfileInputSchema,
-    outputSchema: GenerateDefectProfileOutputSchema,
-  },
-  async input => {
-    // In a real application, this would involve training an actual AI model.
-    // For this example, we'll just return a dummy model ID.
-    const {output} = await prompt(input);
-    return {
-      modelId: 'dummy-model-id-' + Math.random().toString(36).substring(7),
-    };
-  }
-);
