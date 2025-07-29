@@ -20,3 +20,10 @@ Training and analysis logs from the Python scripts are streamed to your
 terminal when running the Next.js server so you can monitor progress.
 
 To get started, take a look at `src/app/page.tsx`.
+
+## Arduino Motor Control
+The app can control two motors through an Arduino using the commands defined in
+`src/lib/arduino.ts`. Set the `ARDUINO_PORT` environment variable to the serial
+port where your Arduino is connected (defaults to `/dev/ttyACM0`). The new
+**Control** tab in the UI lets you send direction and speed commands to both
+motors.
