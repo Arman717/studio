@@ -92,6 +92,7 @@ export function InspectionTab({ modelId, onInspectionComplete }: InspectionTabPr
         cameraFeedDataUri,
         sensor3dData: values.sensor3dData,
         normalAiProfile: values.normalAiProfile,
+        modelId: values.normalAiProfile,
       });
 
       setAnalysisResult(result);
