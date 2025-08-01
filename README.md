@@ -21,6 +21,9 @@ terminal when running the Next.js server so you can monitor progress.
 
 To get started, take a look at `src/app/page.tsx`.
 
+After pulling new changes, run `npm install` to ensure all dependencies, such as
+`react-webcam`, are installed before starting the dev server.
+
 ## Arduino Motor Control
 The app can control two motors through an Arduino using the commands defined in
 `src/lib/arduino.ts`. Set the `ARDUINO_PORT` environment variable to the serial
