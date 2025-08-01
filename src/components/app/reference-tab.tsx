@@ -37,7 +37,7 @@ export function ReferenceTab({ onModelTrained }: ReferenceTabProps) {
   const [status, setStatus] = useState<Status>("idle");
   const [progress, setProgress] = useState(0);
   const [trainedModelId, setTrainedModelId] = useState<string | null>(null);
-  const [trainingDuration, setTrainingDuration] = useState(60);
+  const [captureDuration, setCaptureDuration] = useState(60);
   const [selecting, setSelecting] = useState(false);
   const [cropRect, setCropRect] = useState<{
     x: number;
@@ -45,7 +45,13 @@ export function ReferenceTab({ onModelTrained }: ReferenceTabProps) {
     width: number;
     height: number;
   } | null>(null);
+  const [clipStyle, setClipStyle] = useState<React.CSSProperties | undefined>();
   const { toast } = useToast();
+
+  // Show the webcam as soon as this tab is opened
+  useEffect(() => {
+    setShowCamera(true);
+  }, []);
 
   useEffect(() => {
     let timer: NodeJS.Timeout | undefined;
@@ -79,6 +85,21 @@ export function ReferenceTab({ onModelTrained }: ReferenceTabProps) {
   const endSelect = () => {
     setSelecting(false);
   };
+
+  useEffect(() => {
+    if (!cropRect || !overlayRef.current) {
+      setClipStyle(undefined);
+      return;
+    }
+    const rect = overlayRef.current.getBoundingClientRect();
+    const left = Math.min(cropRect.x, cropRect.x + cropRect.width);
+    const top = Math.min(cropRect.y, cropRect.y + cropRect.height);
+    const width = Math.abs(cropRect.width);
+    const height = Math.abs(cropRect.height);
+    const right = rect.width - (left + width);
+    const bottom = rect.height - (top + height);
+    setClipStyle({ clipPath: `inset(${top}px ${right}px ${bottom}px ${left}px)` });
+  }, [cropRect]);
 
   async function cropImage(dataUri: string): Promise<string> {
     if (!cropRect) return dataUri;
@@ -115,7 +136,8 @@ export function ReferenceTab({ onModelTrained }: ReferenceTabProps) {
       const img = webcamRef.current?.getScreenshot();
       if (img) images.push(await cropImage(img));
       count++;
-      setProgress(Math.min(50, (count / trainingDuration) * 50));
+      setProgress(Math.min(50, (count / captureDuration) * 50));
+
     }, 1000);
     setTimeout(async () => {
       clearInterval(interval);
@@ -143,7 +165,10 @@ export function ReferenceTab({ onModelTrained }: ReferenceTabProps) {
       } finally {
         setShowCamera(false);
       }
-    }, trainingDuration * 1000);
+
+
+    }, captureDuration * 1000);
+
   };
 
   return (
@@ -161,25 +186,72 @@ export function ReferenceTab({ onModelTrained }: ReferenceTabProps) {
       <CardContent className="space-y-4">
         {showCamera && (
           <div className="relative">
-            <Webcam audio={false} ref={webcamRef} className="w-full rounded-md" />
+            <Webcam
+              audio={false}
+              ref={webcamRef}
+              className="w-full rounded-md"
+              style={!selecting && clipStyle ? clipStyle : undefined}
+            />
             <div
               ref={overlayRef}
-              className="absolute inset-0 cursor-crosshair"
+              className={`absolute inset-0 ${selecting ? "cursor-crosshair" : ""}`}
               onMouseDown={beginSelect}
               onMouseMove={updateSelect}
               onMouseUp={endSelect}
               onMouseLeave={endSelect}
             >
               {cropRect && (
-                <div
-                  className="absolute border border-red-500"
-                  style={{
-                    left: Math.min(cropRect.x, cropRect.x + cropRect.width),
-                    top: Math.min(cropRect.y, cropRect.y + cropRect.height),
-                    width: Math.abs(cropRect.width),
-                    height: Math.abs(cropRect.height),
-                  }}
-                />
+                <>
+                  <div
+                    className="absolute border border-red-500"
+                    style={{
+                      left: Math.min(cropRect.x, cropRect.x + cropRect.width),
+                      top: Math.min(cropRect.y, cropRect.y + cropRect.height),
+                      width: Math.abs(cropRect.width),
+                      height: Math.abs(cropRect.height),
+                    }}
+                  />
+                  {!selecting && (
+                    <>
+                      <div
+                        className="absolute bg-black/80"
+                        style={{
+                          top: 0,
+                          left: 0,
+                          right: 0,
+                          height: Math.min(cropRect.y, cropRect.y + cropRect.height),
+                        }}
+                      />
+                      <div
+                        className="absolute bg-black/80"
+                        style={{
+                          top: Math.min(cropRect.y, cropRect.y + cropRect.height) + Math.abs(cropRect.height),
+                          left: 0,
+                          right: 0,
+                          bottom: 0,
+                        }}
+                      />
+                      <div
+                        className="absolute bg-black/80"
+                        style={{
+                          top: Math.min(cropRect.y, cropRect.y + cropRect.height),
+                          left: 0,
+                          width: Math.min(cropRect.x, cropRect.x + cropRect.width),
+                          height: Math.abs(cropRect.height),
+                        }}
+                      />
+                      <div
+                        className="absolute bg-black/80"
+                        style={{
+                          top: Math.min(cropRect.y, cropRect.y + cropRect.height),
+                          left: Math.min(cropRect.x, cropRect.x + cropRect.width) + Math.abs(cropRect.width),
+                          right: 0,
+                          height: Math.abs(cropRect.height),
+                        }}
+                      />
+                    </>
+                  )}
+                </>
               )}
             </div>
           </div>
@@ -196,14 +268,22 @@ export function ReferenceTab({ onModelTrained }: ReferenceTabProps) {
       </CardContent>
       <CardFooter className="flex flex-col gap-4">
         <div className="flex items-center gap-2 w-full">
-          <label className="text-sm whitespace-nowrap" htmlFor="trainTime">Training Time (s)</label>
+
+
+          <label className="text-sm whitespace-nowrap text-black" htmlFor="trainTime">Training Time (s)</label>
+
+
           <input
             id="trainTime"
             type="number"
             min={1}
+
+
             className="border rounded px-2 py-1 flex-grow"
-            value={trainingDuration}
-            onChange={e => setTrainingDuration(Number(e.target.value))}
+            value={captureDuration}
+            onChange={e => setCaptureDuration(Number(e.target.value))}
+
+
             disabled={status !== "idle"}
           />
         </div>
