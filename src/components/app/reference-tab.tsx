@@ -132,14 +132,24 @@ export function ReferenceTab({ onModelTrained }: ReferenceTabProps) {
     await sendCommand("B1");
     const images: string[] = [];
     let count = 0;
+    const sleep = (ms: number) => new Promise(res => setTimeout(res, ms));
+    let capturing = true;
     const interval = setInterval(async () => {
+      await sendCommand("A0");
+      await sendCommand("B0");
+      await sleep(200);
       const img = webcamRef.current?.getScreenshot();
       if (img) images.push(await cropImage(img));
+      if (capturing) {
+        await sendCommand("A1");
+        await sendCommand("B1");
+      }
       count++;
       setProgress(Math.min(50, (count / captureDuration) * 50));
 
     }, 1000);
     setTimeout(async () => {
+      capturing = false;
       clearInterval(interval);
       await sendCommand("A0");
       await sendCommand("B0");
@@ -163,6 +173,8 @@ export function ReferenceTab({ onModelTrained }: ReferenceTabProps) {
         });
         setStatus("idle");
       } finally {
+        await sendCommand("A0");
+        await sendCommand("B0");
         setShowCamera(false);
       }
 
