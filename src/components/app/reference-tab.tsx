@@ -169,11 +169,29 @@ export function ReferenceTab({ onModelTrained }: ReferenceTabProps) {
       </CardHeader>
       <CardContent className="space-y-4">
         {showCamera && (
-          <div className="relative">
-            <Webcam audio={false} ref={webcamRef} className="w-full rounded-md" />
+          <div className="relative bg-black">
+            <Webcam
+              audio={false}
+              ref={webcamRef}
+              className="w-full rounded-md"
+              style={(() => {
+                if (!cropRect || selecting) return {};
+                const rect = overlayRef.current?.getBoundingClientRect();
+                if (!rect) return {};
+                const x1 = Math.min(cropRect.x, cropRect.x + cropRect.width);
+                const x2 = Math.max(cropRect.x, cropRect.x + cropRect.width);
+                const y1 = Math.min(cropRect.y, cropRect.y + cropRect.height);
+                const y2 = Math.max(cropRect.y, cropRect.y + cropRect.height);
+                const top = (y1 / rect.height) * 100;
+                const right = ((rect.width - x2) / rect.width) * 100;
+                const bottom = ((rect.height - y2) / rect.height) * 100;
+                const left = (x1 / rect.width) * 100;
+                return { clipPath: `inset(${top}% ${right}% ${bottom}% ${left}%)` };
+              })()}
+            />
             <div
               ref={overlayRef}
-              className="absolute inset-0 cursor-crosshair"
+              className={`absolute inset-0 ${selecting ? "cursor-crosshair" : ""}`}
               onMouseDown={beginSelect}
               onMouseMove={updateSelect}
               onMouseUp={endSelect}
@@ -207,7 +225,7 @@ export function ReferenceTab({ onModelTrained }: ReferenceTabProps) {
         <div className="flex items-center gap-2 w-full">
 
 
-          <label className="text-sm whitespace-nowrap" htmlFor="trainTime">Training Time (s)</label>
+          <label className="text-sm whitespace-nowrap text-black" htmlFor="trainTime">Training Time (s)</label>
 
 
           <input
@@ -217,14 +235,18 @@ export function ReferenceTab({ onModelTrained }: ReferenceTabProps) {
 
 
             className="border rounded px-2 py-1 flex-grow"
-            value={trainingDuration}
-            onChange={e => setTrainingDuration(Number(e.target.value))}
+            value={captureDuration}
+            onChange={e => setCaptureDuration(Number(e.target.value))}
 
 
             disabled={status !== "idle"}
           />
         </div>
-        <Button onClick={startProcess} disabled={status === "collecting" || status === "training"} className="w-full">
+        <Button
+          onClick={startProcess}
+          disabled={status === "collecting" || status === "training" || !cropRect}
+          className="w-full"
+        >
           {status === "collecting" ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Collecting Data...
