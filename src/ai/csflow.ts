@@ -1,7 +1,7 @@
 import {spawn} from 'child_process';
 import {tmpdir} from 'os';
 import {join} from 'path';
-import {writeFile} from 'fs/promises';
+import {writeFile, mkdir} from 'fs/promises';
 
 
 const PYTHON_CMD = process.env.PYTHON ?? 'python3';
@@ -52,11 +52,15 @@ export async function analyzeWithCsFlow(
 
 export async function trainCsFlow(referenceImages: string[]): Promise<string> {
   const imagePaths: string[] = [];
+  const trainingDir = join(process.cwd(), 'public', 'training-data');
+  await mkdir(trainingDir, {recursive: true});
   for (const img of referenceImages) {
     const [, data] = img.split(',');
     const buffer = Buffer.from(data, 'base64');
     const path = join(tmpdir(), `csflow-ref-${Date.now()}-${Math.random()}.png`);
     await writeFile(path, buffer);
+    const copyPath = join(trainingDir, `ref-${Date.now()}-${Math.random()}.png`);
+    await writeFile(copyPath, buffer);
     imagePaths.push(path);
   }
   const modelPath = join(tmpdir(), `csflow-model-${Date.now()}.pth`);
