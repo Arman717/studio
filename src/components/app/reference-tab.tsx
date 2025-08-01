@@ -38,7 +38,6 @@ export function ReferenceTab({ onModelTrained }: ReferenceTabProps) {
   const [progress, setProgress] = useState(0);
   const [trainedModelId, setTrainedModelId] = useState<string | null>(null);
   const [captureDuration, setCaptureDuration] = useState(60);
-
   const [selecting, setSelecting] = useState(false);
   const [cropRect, setCropRect] = useState<{
     x: number;
@@ -121,7 +120,6 @@ export function ReferenceTab({ onModelTrained }: ReferenceTabProps) {
       const img = webcamRef.current?.getScreenshot();
       if (img) images.push(await cropImage(img));
       count++;
-
       setProgress(Math.min(50, (count / captureDuration) * 50));
 
     }, 1000);
@@ -151,6 +149,7 @@ export function ReferenceTab({ onModelTrained }: ReferenceTabProps) {
       } finally {
         setShowCamera(false);
       }
+
 
     }, captureDuration * 1000);
 
@@ -207,16 +206,20 @@ export function ReferenceTab({ onModelTrained }: ReferenceTabProps) {
       <CardFooter className="flex flex-col gap-4">
         <div className="flex items-center gap-2 w-full">
 
+
           <label className="text-sm whitespace-nowrap" htmlFor="trainTime">Training Time (s)</label>
+
 
           <input
             id="trainTime"
             type="number"
             min={1}
 
+
             className="border rounded px-2 py-1 flex-grow"
             value={trainingDuration}
             onChange={e => setTrainingDuration(Number(e.target.value))}
+
 
             disabled={status !== "idle"}
           />
