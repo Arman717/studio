@@ -45,6 +45,7 @@ export function ReferenceTab({ onModelTrained }: ReferenceTabProps) {
     width: number;
     height: number;
   } | null>(null);
+  const [clipStyle, setClipStyle] = useState<React.CSSProperties | undefined>();
   const { toast } = useToast();
 
   // Show the webcam as soon as this tab is opened
@@ -84,6 +85,21 @@ export function ReferenceTab({ onModelTrained }: ReferenceTabProps) {
   const endSelect = () => {
     setSelecting(false);
   };
+
+  useEffect(() => {
+    if (!cropRect || !overlayRef.current) {
+      setClipStyle(undefined);
+      return;
+    }
+    const rect = overlayRef.current.getBoundingClientRect();
+    const left = Math.min(cropRect.x, cropRect.x + cropRect.width);
+    const top = Math.min(cropRect.y, cropRect.y + cropRect.height);
+    const width = Math.abs(cropRect.width);
+    const height = Math.abs(cropRect.height);
+    const right = rect.width - (left + width);
+    const bottom = rect.height - (top + height);
+    setClipStyle({ clipPath: `inset(${top}px ${right}px ${bottom}px ${left}px)` });
+  }, [cropRect]);
 
   async function cropImage(dataUri: string): Promise<string> {
     if (!cropRect) return dataUri;
@@ -170,7 +186,12 @@ export function ReferenceTab({ onModelTrained }: ReferenceTabProps) {
       <CardContent className="space-y-4">
         {showCamera && (
           <div className="relative">
-            <Webcam audio={false} ref={webcamRef} className="w-full rounded-md" />
+            <Webcam
+              audio={false}
+              ref={webcamRef}
+              className="w-full rounded-md"
+              style={!selecting && clipStyle ? clipStyle : undefined}
+            />
             <div
               ref={overlayRef}
               className={`absolute inset-0 ${selecting ? "cursor-crosshair" : ""}`}
