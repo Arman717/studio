@@ -173,22 +173,64 @@ export function ReferenceTab({ onModelTrained }: ReferenceTabProps) {
             <Webcam audio={false} ref={webcamRef} className="w-full rounded-md" />
             <div
               ref={overlayRef}
-              className="absolute inset-0 cursor-crosshair"
+              className={`absolute inset-0 ${selecting ? "cursor-crosshair" : ""}`}
               onMouseDown={beginSelect}
               onMouseMove={updateSelect}
               onMouseUp={endSelect}
               onMouseLeave={endSelect}
             >
               {cropRect && (
-                <div
-                  className="absolute border border-red-500"
-                  style={{
-                    left: Math.min(cropRect.x, cropRect.x + cropRect.width),
-                    top: Math.min(cropRect.y, cropRect.y + cropRect.height),
-                    width: Math.abs(cropRect.width),
-                    height: Math.abs(cropRect.height),
-                  }}
-                />
+                <>
+                  <div
+                    className="absolute border border-red-500"
+                    style={{
+                      left: Math.min(cropRect.x, cropRect.x + cropRect.width),
+                      top: Math.min(cropRect.y, cropRect.y + cropRect.height),
+                      width: Math.abs(cropRect.width),
+                      height: Math.abs(cropRect.height),
+                    }}
+                  />
+                  {!selecting && (
+                    <>
+                      <div
+                        className="absolute bg-black/80"
+                        style={{
+                          top: 0,
+                          left: 0,
+                          right: 0,
+                          height: Math.min(cropRect.y, cropRect.y + cropRect.height),
+                        }}
+                      />
+                      <div
+                        className="absolute bg-black/80"
+                        style={{
+                          top: Math.min(cropRect.y, cropRect.y + cropRect.height) + Math.abs(cropRect.height),
+                          left: 0,
+                          right: 0,
+                          bottom: 0,
+                        }}
+                      />
+                      <div
+                        className="absolute bg-black/80"
+                        style={{
+                          top: Math.min(cropRect.y, cropRect.y + cropRect.height),
+                          left: 0,
+                          width: Math.min(cropRect.x, cropRect.x + cropRect.width),
+                          height: Math.abs(cropRect.height),
+                        }}
+                      />
+                      <div
+                        className="absolute bg-black/80"
+                        style={{
+                          top: Math.min(cropRect.y, cropRect.y + cropRect.height),
+                          left: Math.min(cropRect.x, cropRect.x + cropRect.width) + Math.abs(cropRect.width),
+                          right: 0,
+                          height: Math.abs(cropRect.height),
+                        }}
+                      />
+                    </>
+                  )}
+                </>
               )}
             </div>
           </div>
@@ -207,7 +249,7 @@ export function ReferenceTab({ onModelTrained }: ReferenceTabProps) {
         <div className="flex items-center gap-2 w-full">
 
 
-          <label className="text-sm whitespace-nowrap" htmlFor="trainTime">Training Time (s)</label>
+          <label className="text-sm whitespace-nowrap text-black" htmlFor="trainTime">Training Time (s)</label>
 
 
           <input
@@ -217,8 +259,8 @@ export function ReferenceTab({ onModelTrained }: ReferenceTabProps) {
 
 
             className="border rounded px-2 py-1 flex-grow"
-            value={trainingDuration}
-            onChange={e => setTrainingDuration(Number(e.target.value))}
+            value={captureDuration}
+            onChange={e => setCaptureDuration(Number(e.target.value))}
 
 
             disabled={status !== "idle"}
