@@ -133,8 +133,12 @@ export function ReferenceTab({ onModelTrained }: ReferenceTabProps) {
     const images: string[] = [];
     let count = 0;
     const interval = setInterval(async () => {
+      await sendCommand("A0");
+      await sendCommand("B0");
       const img = webcamRef.current?.getScreenshot();
       if (img) images.push(await cropImage(img));
+      await sendCommand("A1");
+      await sendCommand("B1");
       count++;
       setProgress(Math.min(50, (count / captureDuration) * 50));
 
