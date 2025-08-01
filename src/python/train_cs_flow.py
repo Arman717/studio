@@ -84,9 +84,17 @@ def main() -> None:
     train_good.mkdir(parents=True, exist_ok=True)
     test_good.mkdir(parents=True, exist_ok=True)
 
-    test_count = min(2, len(args.images))
-    train_imgs = args.images[:-test_count] if len(args.images) > test_count else []
-    test_imgs = args.images[-test_count:]
+    if len(args.images) == 0:
+        print("No training images were provided", file=sys.stderr)
+        sys.exit(1)
+
+    if len(args.images) < 2:
+        train_imgs = args.images
+        test_imgs = args.images
+    else:
+        test_count = min(2, len(args.images))
+        train_imgs = args.images[:-test_count]
+        test_imgs = args.images[-test_count:]
 
     for idx, img in enumerate(train_imgs):
         dest = train_good / f"img_{idx}.png"
