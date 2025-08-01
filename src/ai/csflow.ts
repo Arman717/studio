@@ -1,7 +1,7 @@
 import {spawn} from 'child_process';
 import {tmpdir} from 'os';
 import {join} from 'path';
-import {writeFile} from 'fs/promises';
+import {writeFile, mkdir} from 'fs/promises';
 
 
 const PYTHON_CMD = process.env.PYTHON ?? 'python3';
@@ -50,7 +50,10 @@ export async function analyzeWithCsFlow(
   return JSON.parse(lines[lines.length - 1]);
 }
 
-export async function trainCsFlow(referenceImages: string[]): Promise<string> {
+export async function trainCsFlow(
+  referenceImages: string[],
+  modelName?: string,
+): Promise<string> {
   const imagePaths: string[] = [];
   for (const img of referenceImages) {
     const [, data] = img.split(',');
@@ -59,7 +62,14 @@ export async function trainCsFlow(referenceImages: string[]): Promise<string> {
     await writeFile(path, buffer);
     imagePaths.push(path);
   }
-  const modelPath = join(tmpdir(), `csflow-model-${Date.now()}.pth`);
+  let modelPath: string;
+  if (modelName) {
+    const modelsDir = join(process.cwd(), 'models');
+    await mkdir(modelsDir, {recursive: true});
+    modelPath = join(modelsDir, `${modelName}.pth`);
+  } else {
+    modelPath = join(tmpdir(), `csflow-model-${Date.now()}.pth`);
+  }
   const args = [
     'src/python/train_cs_flow.py',
     '--output',

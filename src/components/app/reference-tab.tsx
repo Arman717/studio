@@ -38,6 +38,7 @@ export function ReferenceTab({ onModelTrained }: ReferenceTabProps) {
   const [progress, setProgress] = useState(0);
   const [trainedModelId, setTrainedModelId] = useState<string | null>(null);
   const [captureDuration, setCaptureDuration] = useState(60);
+  const [modelName, setModelName] = useState("");
   const [selecting, setSelecting] = useState(false);
   const [cropRect, setCropRect] = useState<{
     x: number;
@@ -124,6 +125,14 @@ export function ReferenceTab({ onModelTrained }: ReferenceTabProps) {
   }
 
   const startProcess = async () => {
+    if (!modelName.trim()) {
+      toast({
+        variant: "destructive",
+        title: "Model Name Required",
+        description: "Please provide a model name before training.",
+      });
+      return;
+    }
     setStatus("collecting");
     setProgress(0);
     setTrainedModelId(null);
@@ -145,12 +154,15 @@ export function ReferenceTab({ onModelTrained }: ReferenceTabProps) {
       await sendCommand("B0");
       setStatus("training");
       try {
-        const result = await generateDefectProfile({ referenceImages: images });
+        const result = await generateDefectProfile({
+          referenceImages: images,
+          modelName,
+        });
         setTrainedModelId(result.modelId);
         onModelTrained(result.modelId);
         toast({
           title: "Model Trained Successfully",
-          description: `New defect profile created with ID: ${result.modelId}`,
+          description: `Saved as ${modelName}.pth`,
         });
         setProgress(100);
         setStatus("complete");
@@ -267,6 +279,17 @@ export function ReferenceTab({ onModelTrained }: ReferenceTabProps) {
         )}
       </CardContent>
       <CardFooter className="flex flex-col gap-4">
+        <div className="flex items-center gap-2 w-full">
+          <label className="text-sm whitespace-nowrap text-black" htmlFor="modelName">Model Name</label>
+          <input
+            id="modelName"
+            type="text"
+            className="border rounded px-2 py-1 flex-grow"
+            value={modelName}
+            onChange={e => setModelName(e.target.value)}
+            disabled={status !== "idle"}
+          />
+        </div>
         <div className="flex items-center gap-2 w-full">
 
 

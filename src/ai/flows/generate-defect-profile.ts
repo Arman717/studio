@@ -17,6 +17,7 @@ const GenerateDefectProfileInputSchema = z.object({
     .describe(
       'An array of images of defect-free screws, as data URIs that must include a MIME type and use Base64 encoding. Expected format: \'data:<mimetype>;base64,<encoded_data>\'.'      
     ),
+  modelName: z.string().min(1).describe('Desired name for the trained model'),
 });
 export type GenerateDefectProfileInput = z.infer<typeof GenerateDefectProfileInputSchema>;
 
@@ -25,7 +26,9 @@ const GenerateDefectProfileOutputSchema = z.object({
 });
 export type GenerateDefectProfileOutput = z.infer<typeof GenerateDefectProfileOutputSchema>;
 
-export async function generateDefectProfile(input: GenerateDefectProfileInput): Promise<GenerateDefectProfileOutput> {
-  const modelId = await trainCsFlow(input.referenceImages);
+export async function generateDefectProfile(
+  input: GenerateDefectProfileInput,
+): Promise<GenerateDefectProfileOutput> {
+  const modelId = await trainCsFlow(input.referenceImages, input.modelName);
   return {modelId};
 }
