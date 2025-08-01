@@ -55,16 +55,7 @@ const visualizeScrewDefectsFlow = ai.defineFlow(
     outputSchema: VisualizeScrewDefectsOutputSchema,
   },
   async input => {
-    const {media} = await ai.generate({
-      model: 'googleai/gemini-2.0-flash-preview-image-generation',
-      prompt: [
-        {text: visualizeScrewDefectsPrompt(input).prompt},
-        {media: {url: input.screwImage}},
-      ],
-      config: {
-        responseModalities: ['TEXT', 'IMAGE'],
-      },
-    });
-    return {visualization: media!.url!};
+    const {output} = await visualizeScrewDefectsPrompt(input);
+    return output!;
   }
 );
