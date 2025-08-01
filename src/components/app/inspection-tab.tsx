@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import Webcam from "react-webcam";
+import { useState, useEffect, useRef, type MouseEvent } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -28,7 +29,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { fileToBase64 } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import {
   Loader2,
@@ -37,20 +37,10 @@ import {
   XCircle,
   AlertTriangle,
 } from "lucide-react";
-import Image from "next/image";
+import NextImage from "next/image";
 import type { InspectionResult } from "./results-tab";
 
 const formSchema = z.object({
-  cameraFeed: z
-    .custom<FileList>()
-    .refine(
-      (files) => files && files.length === 1,
-      "A single camera image is required."
-    )
-    .refine(
-      (files) => files && files[0].type.startsWith("image/"),
-      "Only image files are allowed."
-    ),
   sensor3dData: z.string().min(1, "3D sensor data is required."),
   normalAiProfile: z.string().min(1, "A normal AI profile (Model ID) is required."),
 });
@@ -65,16 +55,31 @@ export function InspectionTab({ modelId, onInspectionComplete }: InspectionTabPr
   const [analysisResult, setAnalysisResult] =
     useState<AnalyzeScrewDefectsOutput | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const webcamRef = useRef<Webcam>(null);
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const [showCamera, setShowCamera] = useState(false);
+  const [selecting, setSelecting] = useState(false);
+  const [cropRect, setCropRect] = useState<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null>(null);
+  const [clipStyle, setClipStyle] = useState<React.CSSProperties | undefined>();
   const { toast } = useToast();
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      cameraFeed: undefined,
-      sensor3dData: "Sample 3D sensor data: { height: 25.4, thread_depth: 1.5, form_deviation: 0.02 }",
+      sensor3dData:
+        "Sample 3D sensor data: { height: 25.4, thread_depth: 1.5, form_deviation: 0.02 }",
       normalAiProfile: modelId || "",
     },
   });
+
+  useEffect(() => {
+    setShowCamera(true);
+  }, []);
 
   useEffect(() => {
     if (modelId) {
@@ -82,11 +87,83 @@ export function InspectionTab({ modelId, onInspectionComplete }: InspectionTabPr
     }
   }, [modelId, form]);
 
+  const beginSelect = (e: MouseEvent<HTMLDivElement>) => {
+    if (isLoading) return;
+    const rect = overlayRef.current!.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    setCropRect({ x, y, width: 0, height: 0 });
+    setSelecting(true);
+  };
+
+  const updateSelect = (e: MouseEvent<HTMLDivElement>) => {
+    if (!selecting || !cropRect) return;
+    const rect = overlayRef.current!.getBoundingClientRect();
+    const width = e.clientX - rect.left - cropRect.x;
+    const height = e.clientY - rect.top - cropRect.y;
+    setCropRect({ ...cropRect, width, height });
+  };
+
+  const endSelect = () => {
+    setSelecting(false);
+  };
+
+  useEffect(() => {
+    if (!cropRect || !overlayRef.current) {
+      setClipStyle(undefined);
+      return;
+    }
+    const rect = overlayRef.current.getBoundingClientRect();
+    const left = Math.min(cropRect.x, cropRect.x + cropRect.width);
+    const top = Math.min(cropRect.y, cropRect.y + cropRect.height);
+    const width = Math.abs(cropRect.width);
+    const height = Math.abs(cropRect.height);
+    const right = rect.width - (left + width);
+    const bottom = rect.height - (top + height);
+    setClipStyle({ clipPath: `inset(${top}px ${right}px ${bottom}px ${left}px)` });
+  }, [cropRect]);
+
+  async function cropImage(dataUri: string): Promise<string> {
+    if (!cropRect) return dataUri;
+    const img = new Image();
+    img.src = dataUri;
+    await new Promise<void>((res) => {
+      img.onload = () => res();
+    });
+    const canvas = document.createElement("canvas");
+    const videoW = img.width;
+    const videoH = img.height;
+    const overlay = overlayRef.current?.getBoundingClientRect();
+    const scaleX = overlay ? videoW / overlay.width : 1;
+    const scaleY = overlay ? videoH / overlay.height : 1;
+    const x = Math.min(cropRect.x, cropRect.x + cropRect.width) * scaleX;
+    const y = Math.min(cropRect.y, cropRect.y + cropRect.height) * scaleY;
+    const w = Math.abs(cropRect.width) * scaleX;
+    const h = Math.abs(cropRect.height) * scaleY;
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d")!;
+    ctx.drawImage(img, x, y, w, h, 0, 0, w, h);
+    return canvas.toDataURL("image/png");
+  }
+
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
     setIsLoading(true);
     setAnalysisResult(null);
     try {
-      const cameraFeedDataUri = await fileToBase64(values.cameraFeed[0]);
+      const screenshot = webcamRef.current?.getScreenshot();
+      if (!screenshot) {
+        toast({
+          variant: "destructive",
+          title: "Camera Error",
+          description: "Unable to capture image from webcam.",
+        });
+        setIsLoading(false);
+        return;
+      }
+
+      const cameraFeedDataUri = await cropImage(screenshot);
+      setPreviewUrl(cameraFeedDataUri);
 
       const result = await analyzeScrewDefects({
         cameraFeedDataUri,
@@ -118,13 +195,6 @@ export function InspectionTab({ modelId, onInspectionComplete }: InspectionTabPr
     }
   };
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      form.setValue("cameraFeed", event.target.files as FileList);
-      setPreviewUrl(URL.createObjectURL(file));
-    }
-  };
 
   return (
     <div className="grid md:grid-cols-2 gap-8 items-start">
@@ -135,30 +205,89 @@ export function InspectionTab({ modelId, onInspectionComplete }: InspectionTabPr
             Live Inspection
           </CardTitle>
           <CardDescription>
-            Upload a screw image and provide sensor data to analyze it against
-            the trained profile.
+            Select an area of interest on the camera feed and provide sensor
+            data to analyze it against the trained profile.
           </CardDescription>
         </CardHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)}>
             <CardContent className="space-y-4">
-              <FormField
-                control={form.control}
-                name="cameraFeed"
-                render={() => (
-                  <FormItem>
-                    <FormLabel>Camera Feed Image</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="file"
-                        onChange={handleFileChange}
-                        className="file:text-foreground"
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              {showCamera && (
+                <div className="relative">
+                  <Webcam
+                    audio={false}
+                    ref={webcamRef}
+                    className="w-full rounded-md"
+                    style={!selecting && clipStyle ? clipStyle : undefined}
+                  />
+                  <div
+                    ref={overlayRef}
+                    className={`absolute inset-0 ${selecting ? "cursor-crosshair" : ""}`}
+                    onMouseDown={beginSelect}
+                    onMouseMove={updateSelect}
+                    onMouseUp={endSelect}
+                    onMouseLeave={endSelect}
+                  >
+                    {cropRect && (
+                      <>
+                        <div
+                          className="absolute border border-red-500"
+                          style={{
+                            left: Math.min(cropRect.x, cropRect.x + cropRect.width),
+                            top: Math.min(cropRect.y, cropRect.y + cropRect.height),
+                            width: Math.abs(cropRect.width),
+                            height: Math.abs(cropRect.height),
+                          }}
+                        />
+                        {!selecting && (
+                          <>
+                            <div
+                              className="absolute bg-black/80"
+                              style={{
+                                top: 0,
+                                left: 0,
+                                right: 0,
+                                height: Math.min(cropRect.y, cropRect.y + cropRect.height),
+                              }}
+                            />
+                            <div
+                              className="absolute bg-black/80"
+                              style={{
+                                top:
+                                  Math.min(cropRect.y, cropRect.y + cropRect.height) +
+                                  Math.abs(cropRect.height),
+                                left: 0,
+                                right: 0,
+                                bottom: 0,
+                              }}
+                            />
+                            <div
+                              className="absolute bg-black/80"
+                              style={{
+                                top: Math.min(cropRect.y, cropRect.y + cropRect.height),
+                                left: 0,
+                                width: Math.min(cropRect.x, cropRect.x + cropRect.width),
+                                height: Math.abs(cropRect.height),
+                              }}
+                            />
+                            <div
+                              className="absolute bg-black/80"
+                              style={{
+                                top: Math.min(cropRect.y, cropRect.y + cropRect.height),
+                                left:
+                                  Math.min(cropRect.x, cropRect.x + cropRect.width) +
+                                  Math.abs(cropRect.width),
+                                right: 0,
+                                height: Math.abs(cropRect.height),
+                              }}
+                            />
+                          </>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
               <FormField
                 control={form.control}
                 name="sensor3dData"
@@ -216,7 +345,7 @@ export function InspectionTab({ modelId, onInspectionComplete }: InspectionTabPr
             <CardTitle className="text-xl font-headline">Visualization</CardTitle>
           </CardHeader>
           <CardContent>
-            <Image
+            <NextImage
               src={
                 analysisResult?.defectVisualizationDataUri ||
                 previewUrl ||
