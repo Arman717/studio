@@ -20,6 +20,16 @@ except ModuleNotFoundError:
     )
     raise
 
+try:
+    import cv2
+    import numpy as np
+except ModuleNotFoundError:
+    print(
+        "Missing dependencies. Please install opencv-python-headless and numpy.",
+        file=sys.stderr,
+    )
+    raise
+
 
 def ensure_repo(repo_dir: Path) -> None:
     """Clone the cs-flow repository if it doesn't exist."""
@@ -53,6 +63,26 @@ def patch_training_code(repo_dir: Path) -> None:
     )
     text = text.replace("roc_auc_score(is_anomaly, anomaly_score)", "safe_roc_auc_score(is_anomaly, anomaly_score)")
     train_py.write_text(text)
+
+
+def segment_screw(src: Path, dest: Path) -> None:
+    """Segment the screw from the background using simple thresholding."""
+    img = cv2.imread(str(src))
+    if img is None:
+        return
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    contours, _ = cv2.findContours(
+        thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+    )
+    if not contours:
+        cv2.imwrite(str(dest), img)
+        return
+    c = max(contours, key=cv2.contourArea)
+    mask = np.zeros_like(gray)
+    cv2.drawContours(mask, [c], -1, 255, thickness=-1)
+    segmented = cv2.bitwise_and(img, img, mask=mask)
+    cv2.imwrite(str(dest), segmented)
 
 
 def main() -> None:
@@ -99,10 +129,12 @@ def main() -> None:
     for idx, img in enumerate(train_imgs):
         dest = train_good / f"img_{idx}.png"
         shutil.copy(img, dest)
+        segment_screw(dest, dest)
 
     for idx, img in enumerate(test_imgs):
         dest = test_good / f"img_{idx}.png"
         shutil.copy(img, dest)
+        segment_screw(dest, dest)
 
     train_set, test_set = load_datasets(c.dataset_path, c.class_name)
     train_loader, test_loader = make_dataloaders(train_set, test_set)
