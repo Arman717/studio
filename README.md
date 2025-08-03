@@ -9,15 +9,21 @@ returned by the training flow. Pass this path to the analysis flow. Analysis
 returns a heatmap overlay image highlighting detected anomalies.
 Ensure your Python environment has the dependencies listed in CS-Flow's
 `requirements.txt` installed. In particular, `torch` and `torchvision` are
-required. Set the `PYTHON` environment variable if you want to use a custom
-Python interpreter. The scripts will automatically use CUDA if available,
-falling back to the CPU otherwise.
+required. OpenCV (`opencv-python-headless`) and `numpy` are also needed for
+automatic screw segmentation during training and inspection. Set the `PYTHON` environment
+variable if you want to use a custom Python interpreter. The scripts will
+automatically use CUDA if available, falling back to the CPU otherwise.
 
 The training wrapper patches CS-Flow's `train.py` so AUROC remains a neutral
 0.5 when the dataset only contains one class and noisy warnings are suppressed.
 
 Training and analysis logs from the Python scripts are streamed to your
 terminal when running the Next.js server so you can monitor progress.
+
+During training, each captured image is automatically segmented to isolate the
+screw before it is used to train the CS-Flow model. Inspection snapshots are
+segmented the same way prior to analysis so the model focuses on relevant
+features of the screw.
 
 To get started, take a look at `src/app/page.tsx`.
 

@@ -21,6 +21,16 @@ except ModuleNotFoundError as e:
     )
     raise
 
+try:
+    import cv2
+    import numpy as np
+except ModuleNotFoundError:
+    print(
+        "Missing dependencies. Please install opencv-python-headless and numpy.",
+        file=sys.stderr,
+    )
+    raise
+
 
 def ensure_repo(repo_dir: Path) -> None:
     if repo_dir.exists():
@@ -29,6 +39,23 @@ def ensure_repo(repo_dir: Path) -> None:
         ["git", "clone", "https://github.com/Arman717/cs-flow", str(repo_dir)]
     )
 
+
+def segment_screw(path: Path) -> Image.Image:
+    """Segment the screw from the background using simple thresholding."""
+    img = cv2.imread(str(path))
+    if img is None:
+        return Image.open(path).convert("RGB")
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    contours, _ = cv2.findContours(
+        thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+    )
+    if contours:
+        c = max(contours, key=cv2.contourArea)
+        mask = np.zeros_like(gray)
+        cv2.drawContours(mask, [c], -1, 255, thickness=-1)
+        img = cv2.bitwise_and(img, img, mask=mask)
+    return Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Analyze screw image with cs-flow")
@@ -74,7 +101,7 @@ def main() -> None:
         ]
     )
 
-    img = Image.open(args.image).convert("RGB")
+    img = segment_screw(Path(args.image))
     with torch.no_grad():
         img_tensor = tf(img).unsqueeze(0).to(c.device)
         feats = fe(img_tensor)
