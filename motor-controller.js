@@ -1,8 +1,8 @@
 const { SerialPort } = require('serialport');
 
 const port = new SerialPort({
-  // Use ARDUINO_PORT if set, otherwise default to COM6
-  path: process.env.ARDUINO_PORT || 'COM6',
+  // Use ARDUINO_PORT if set, otherwise default to COM7
+  path: process.env.ARDUINO_PORT || 'COM7',
   // Match the ESP8266 sketch's faster serial speed
   baudRate: 115200,
 });

@@ -8,10 +8,10 @@ const baudRate = 115200
 
 /**
  * Resolves the serial port to use for the Arduino/ESP8266.
- * Uses the ARDUINO_PORT env variable or falls back to `COM6`.
+ * Uses the ARDUINO_PORT env variable or falls back to `COM7`.
  */
 async function resolvePortPath(): Promise<string> {
-  return process.env.ARDUINO_PORT || 'COM6'
+  return process.env.ARDUINO_PORT || 'COM7'
 }
 
 /**
