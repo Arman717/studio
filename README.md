@@ -33,7 +33,15 @@ After pulling new changes, run `npm install` to ensure all dependencies, such as
 ## Arduino Motor Control
 The app can control two motors through an Arduino using the commands defined in
 `src/lib/arduino.ts`. Set the `ARDUINO_PORT` environment variable to the serial
-port where your Arduino is connected (for example `COM6` on Windows). If this
+port where your Arduino is connected (for example `COM7` on Windows). If this
 variable is not provided the app attempts to auto-detect the first port that
-looks like an Arduino and falls back to `/dev/ttyACM0`. The new **Control** tab
-in the UI lets you send direction and speed commands to both motors.
+looks like an Arduino and falls back to `/dev/ttyACM0`. The firmware for an
+ESP8266 board is included in `docs/esp8266-motor-control.ino` and communicates
+at 115200 baud, which is the speed used by the server utilities. The new
+**Control** tab in the UI lets you send direction and speed commands to both
+motors.
+
+The sketch accepts PWM speeds from `0`–`1023` for each motor. By default it
+starts both channels at a mid-range value so the motors will turn when a
+direction command is sent. Adjust the speed with `SA<value>` or `SB<value>`
+commands (for example `SA800`), or modify the initial constants in the sketch.
