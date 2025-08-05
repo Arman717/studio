@@ -8,8 +8,11 @@ const uint8_t IN3 = D5;  // GPIO14
 const uint8_t IN4 = D6;  // GPIO12
 const uint8_t ENB = D7;  // GPIO13
 
-int speedA = 120;
-int speedB = 120;
+// Default PWM speeds. Many small DC motors won't move at very low duty
+// cycles, so start with a mid-range value that can be tuned from the host
+// using the `SA`/`SB` commands.
+int speedA = 512;
+int speedB = 512;
 
 void setup() {
   pinMode(IN1, OUTPUT);

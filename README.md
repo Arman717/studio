@@ -40,3 +40,8 @@ ESP8266 board is included in `docs/esp8266-motor-control.ino` and communicates
 at 115200 baud, which is the speed used by the server utilities. The new
 **Control** tab in the UI lets you send direction and speed commands to both
 motors.
+
+The sketch accepts PWM speeds from `0`–`1023` for each motor. By default it
+starts both channels at a mid-range value so the motors will turn when a
+direction command is sent. Adjust the speed with `SA<value>` or `SB<value>`
+commands (for example `SA800`), or modify the initial constants in the sketch.
