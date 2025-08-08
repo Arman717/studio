@@ -8,7 +8,7 @@
  * - AnalyzeScrewDefectsOutput - The return type for the analyzeScrewDefects function.
  */
 
-import {analyzeWithCsFlow} from '@/ai/csflow';
+import {analyzeWithGlass} from '@/ai/glass';
 import {z} from 'genkit';
 
 const AnalyzeScrewDefectsInputSchema = z.object({
@@ -19,7 +19,7 @@ const AnalyzeScrewDefectsInputSchema = z.object({
     ),
   sensor3dData: z.string().describe('3D sensor data of the screw.'),
   normalAiProfile: z.string().describe('The normal AI profile of a screw.'),
-  modelId: z.string().describe('Path to the trained CS-Flow model.'),
+  modelId: z.string().describe('Path to the trained GLASS model.'),
 });
 
 export type AnalyzeScrewDefectsInput = z.infer<typeof AnalyzeScrewDefectsInputSchema>;
@@ -38,5 +38,5 @@ const AnalyzeScrewDefectsOutputSchema = z.object({
 export type AnalyzeScrewDefectsOutput = z.infer<typeof AnalyzeScrewDefectsOutputSchema>;
 
 export async function analyzeScrewDefects(input: AnalyzeScrewDefectsInput): Promise<AnalyzeScrewDefectsOutput> {
-  return analyzeWithCsFlow(input.cameraFeedDataUri, input.modelId);
+  return analyzeWithGlass(input.cameraFeedDataUri, input.modelId);
 }
