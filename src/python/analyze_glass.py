@@ -35,6 +35,36 @@ def ensure_repo(repo_dir: Path) -> None:
     subprocess.check_call(["git", "clone", "https://github.com/cqylunlun/GLASS", str(repo_dir)])
 
 
+def remove_background(img: Image.Image):
+    gray = img.convert("L")
+    arr = np.array(gray)
+    hist = np.bincount(arr.flatten(), minlength=256)
+    total = arr.size
+    sum_total = np.dot(np.arange(256), hist)
+    sumB = 0.0
+    wB = 0.0
+    var_max = 0.0
+    threshold = 0
+    for i in range(256):
+        wB += hist[i]
+        if wB == 0:
+            continue
+        wF = total - wB
+        if wF == 0:
+            break
+        sumB += i * hist[i]
+        mB = sumB / wB
+        mF = (sum_total - sumB) / wF
+        var_between = wB * wF * (mB - mF) ** 2
+        if var_between > var_max:
+            var_max = var_between
+            threshold = i
+    mask = arr < threshold
+    rgb = np.array(img)
+    rgb[~mask] = 0
+    return Image.fromarray(rgb)
+
+
 class SingleImageDataset(torch.utils.data.Dataset):
     def __init__(self, path: Path):
         self.path = path
@@ -42,7 +72,6 @@ class SingleImageDataset(torch.utils.data.Dataset):
         self.distribution = 0
         self.tf = transforms.Compose(
             [
-                transforms.Resize((self.imagesize, self.imagesize)),
                 transforms.ToTensor(),
                 transforms.Normalize(
                     mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
@@ -55,6 +84,8 @@ class SingleImageDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, idx: int):
         img = Image.open(self.path).convert("RGB")
+        img = remove_background(img)
+        img = img.resize((self.imagesize, self.imagesize))
         return {
             "image": self.tf(img),
             "is_anomaly": torch.tensor(0),
@@ -108,7 +139,7 @@ def main() -> None:
     score = float(scores[0])
     mask = masks[0]
 
-    img = Image.open(args.image).convert("RGB")
+    img = remove_background(Image.open(args.image).convert("RGB"))
     mask = (mask - mask.min()) / (mask.max() - mask.min() + 1e-6)
     cmap = plt.get_cmap("viridis")
     colored = (cmap(mask)[:, :, :3] * 255).astype("uint8")

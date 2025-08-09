@@ -22,11 +22,47 @@ except ModuleNotFoundError:
 
 from PIL import Image
 
+try:
+    import numpy as np
+except ModuleNotFoundError:
+    print("Missing dependency numpy.", file=sys.stderr)
+    raise
+
 
 def ensure_repo(repo_dir: Path) -> None:
     if repo_dir.exists():
         return
     subprocess.check_call(["git", "clone", "https://github.com/cqylunlun/GLASS", str(repo_dir)])
+
+
+def remove_background(img: Image.Image):
+    gray = img.convert("L")
+    arr = np.array(gray)
+    hist = np.bincount(arr.flatten(), minlength=256)
+    total = arr.size
+    sum_total = np.dot(np.arange(256), hist)
+    sumB = 0.0
+    wB = 0.0
+    var_max = 0.0
+    threshold = 0
+    for i in range(256):
+        wB += hist[i]
+        if wB == 0:
+            continue
+        wF = total - wB
+        if wF == 0:
+            break
+        sumB += i * hist[i]
+        mB = sumB / wB
+        mF = (sum_total - sumB) / wF
+        var_between = wB * wF * (mB - mF) ** 2
+        if var_between > var_max:
+            var_max = var_between
+            threshold = i
+    mask = arr < threshold
+    rgb = np.array(img)
+    rgb[~mask] = 0
+    return Image.fromarray(rgb), mask.astype(np.uint8)
 
 
 class ImageDataset(torch.utils.data.Dataset):
@@ -47,32 +83,36 @@ class ImageDataset(torch.utils.data.Dataset):
         self.distribution = 2
         self.tf = transforms.Compose(
             [
-                transforms.Resize((self.imagesize, self.imagesize)),
                 transforms.ToTensor(),
                 transforms.Normalize(
                     mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
                 ),
             ]
         )
+        self.save_dir = Path(__file__).resolve().parent / "preprocessed_train"
+        self.save_dir.mkdir(exist_ok=True)
 
     def __len__(self) -> int:
         return len(self.paths)
 
     def __getitem__(self, idx: int):
         img = Image.open(self.paths[idx]).convert("RGB")
-        tensor = self.tf(img)
+        seg, mask = remove_background(img)
+        seg = seg.resize((self.imagesize, self.imagesize))
+        out_path = self.save_dir / f"{self.paths[idx].stem}.png"
+        seg.save(out_path)
+        tensor = self.tf(seg)
         mask_size = self.imagesize // self.downsampling
-        mask_s = torch.ones(mask_size, mask_size)
+        mask_img_full = Image.fromarray(mask * 255).resize((self.imagesize, self.imagesize), Image.NEAREST)
+        mask_img = mask_img_full.resize((mask_size, mask_size), Image.NEAREST)
+        mask_s = torch.from_numpy(np.array(mask_img, dtype=np.float32) / 255.0)
         return {
             "image": tensor,
             "aug": tensor,
-            # Placeholder mask required by GLASS. Using the correct spatial
-            # dimensions (36×36) keeps mask indices aligned with extracted
-            # features during discriminator training. The mask must contain at
-            # least one positive value; otherwise, GLASS computes statistics on
-            # an empty tensor and raises a RuntimeError. Filling the mask with
-            # ones satisfies this requirement without relying on ground-truth
-            # annotations.
+            # Segmentation mask downsampled to match the 36×36 feature map.
+            # Providing a mask with at least one positive value prevents
+            # GLASS from computing statistics on empty tensors during
+            # discriminator training.
             "mask_s": mask_s,
             "is_anomaly": torch.tensor(0),
             "mask_gt": torch.zeros(1, self.imagesize, self.imagesize),
