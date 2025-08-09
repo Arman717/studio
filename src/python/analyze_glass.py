@@ -60,6 +60,8 @@ def remove_background(img: Image.Image):
             var_max = var_between
             threshold = i
     mask = arr < threshold
+    if mask.sum() > mask.size // 2:
+        mask = ~mask
     rgb = np.array(img)
     rgb[~mask] = 0
     return Image.fromarray(rgb)

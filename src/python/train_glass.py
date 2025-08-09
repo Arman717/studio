@@ -60,6 +60,11 @@ def remove_background(img: Image.Image):
             var_max = var_between
             threshold = i
     mask = arr < threshold
+    # If the thresholding selects more than half the image, it's likely
+    # grabbing the background. Invert the mask so the smaller region—the
+    # screw—remains.
+    if mask.sum() > mask.size // 2:
+        mask = ~mask
     rgb = np.array(img)
     rgb[~mask] = 0
     return Image.fromarray(rgb), mask.astype(np.uint8)
