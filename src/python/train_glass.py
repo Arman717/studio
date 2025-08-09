@@ -33,6 +33,13 @@ class ImageDataset(torch.utils.data.Dataset):
     def __init__(self, paths):
         self.paths = [Path(p) for p in paths]
         self.imagesize = 288
+        # GLASS training expects a "mask_s" tensor whose spatial resolution
+        # matches the backbone's feature map (image size divided by the
+        # dataset downsampling factor). The original GLASS datasets use a
+        # downsampling factor of 8, yielding a 36×36 mask for 288×288 inputs.
+        # Without this, the discriminator receives a mismatched mask and
+        # raises an IndexError when indexing patch embeddings.
+        self.downsampling = 8
         # Bypass GLASS distribution auto-detection, which can
         # prematurely exit without saving a checkpoint when the
         # expected metadata file is absent. Using the "manifold"
@@ -54,10 +61,14 @@ class ImageDataset(torch.utils.data.Dataset):
     def __getitem__(self, idx: int):
         img = Image.open(self.paths[idx]).convert("RGB")
         tensor = self.tf(img)
+        mask_size = self.imagesize // self.downsampling
         return {
             "image": tensor,
             "aug": tensor,
-            "mask_s": torch.zeros(self.imagesize, self.imagesize),
+            # Placeholder mask required by GLASS. Using the correct spatial
+            # dimensions (36×36) keeps mask indices aligned with extracted
+            # features during discriminator training.
+            "mask_s": torch.zeros(mask_size, mask_size),
             "is_anomaly": torch.tensor(0),
             "mask_gt": torch.zeros(1, self.imagesize, self.imagesize),
             "image_path": str(self.paths[idx]),
