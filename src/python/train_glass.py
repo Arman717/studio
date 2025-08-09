@@ -97,6 +97,38 @@ def main() -> None:
 
     import glass as glass_mod  # type: ignore
     import backbones  # type: ignore
+    import metrics as glass_metrics  # type: ignore
+
+    # GLASS's evaluation metrics rely on ROC AUC scores, which require both
+    # positive and negative labels. Our screw dataset contains only normal
+    # samples, so evaluation would otherwise raise a ValueError. Override the
+    # metric helpers to return zeros when the ground truth lacks class
+    # diversity.
+
+    _orig_img_metrics = glass_metrics.compute_imagewise_retrieval_metrics
+    _orig_px_metrics = glass_metrics.compute_pixelwise_retrieval_metrics
+
+    def _safe_img_metrics(anomaly_prediction_weights, anomaly_ground_truth_labels, path="training"):
+        if len(set(map(int, anomaly_ground_truth_labels))) <= 1:
+            return {"auroc": 0.0, "ap": 0.0}
+        return _orig_img_metrics(anomaly_prediction_weights, anomaly_ground_truth_labels, path)
+
+    def _safe_px_metrics(anomaly_segmentations, ground_truth_masks, path="train"):
+        try:
+            import numpy as np
+
+            if isinstance(ground_truth_masks, list):
+                gt = np.stack(ground_truth_masks)
+            else:
+                gt = np.asarray(ground_truth_masks)
+            if np.unique(gt.astype(int)).size <= 1:
+                return {"auroc": 0.0, "ap": 0.0}
+        except Exception:
+            pass
+        return _orig_px_metrics(anomaly_segmentations, ground_truth_masks, path)
+
+    glass_metrics.compute_imagewise_retrieval_metrics = _safe_img_metrics
+    glass_metrics.compute_pixelwise_retrieval_metrics = _safe_px_metrics
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
