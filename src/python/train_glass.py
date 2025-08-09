@@ -53,8 +53,11 @@ class ImageDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, idx: int):
         img = Image.open(self.paths[idx]).convert("RGB")
+        tensor = self.tf(img)
         return {
-            "image": self.tf(img),
+            "image": tensor,
+            "aug": tensor,
+            "mask_s": torch.zeros(self.imagesize, self.imagesize),
             "is_anomaly": torch.tensor(0),
             "mask_gt": torch.zeros(1, self.imagesize, self.imagesize),
             "image_path": str(self.paths[idx]),
