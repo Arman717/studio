@@ -83,7 +83,7 @@ def main() -> None:
     dataset = SingleImageDataset(Path(args.image))
     loader = torch.utils.data.DataLoader(dataset, batch_size=1, shuffle=False)
 
-    backbone = backbones.load("wide_resnet50_2")
+    backbone = backbones.load("wideresnet50")
     model = glass_mod.GLASS(device)
     model.load(
         backbone=backbone,

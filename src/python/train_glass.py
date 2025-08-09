@@ -81,7 +81,7 @@ def main() -> None:
     loader = torch.utils.data.DataLoader(dataset, batch_size=2, shuffle=True)
     dataloaders = {"training": loader, "testing": loader}
 
-    backbone = backbones.load("wide_resnet50_2")
+    backbone = backbones.load("wideresnet50")
     model = glass_mod.GLASS(device)
     model.load(
         backbone=backbone,
