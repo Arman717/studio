@@ -104,6 +104,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Analyze screw image with GLASS")
     parser.add_argument("--image", required=True, help="Path to screw image")
     parser.add_argument("--model", required=True, help="Path to trained model")
+    parser.add_argument(
+        "--output", help="Optional path to save the visualization overlay"
+    )
     args = parser.parse_args()
 
     repo_dir = Path(__file__).resolve().parent / "glass_repo"
@@ -162,6 +165,8 @@ def main() -> None:
     colored = (cmap(mask)[:, :, :3] * 255).astype("uint8")
     heat_img = Image.fromarray(colored).resize(img.size)
     overlay = Image.blend(img, heat_img, alpha=0.5)
+    if args.output:
+        overlay.save(args.output)
     buf = io.BytesIO()
     overlay.save(buf, format="PNG")
     b64 = base64.b64encode(buf.getvalue()).decode("ascii")

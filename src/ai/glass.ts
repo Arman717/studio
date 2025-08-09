@@ -38,12 +38,15 @@ export async function analyzeWithGlass(
   const buffer = Buffer.from(data, 'base64');
   const imagePath = join(tmpdir(), `glass-${Date.now()}.png`);
   await writeFile(imagePath, buffer);
+  const outputPath = join(tmpdir(), `glass-overlay-${Date.now()}.png`);
   const stdout = await runPython([
     'src/python/analyze_glass.py',
     '--image',
     imagePath,
     '--model',
     modelPath,
+    '--output',
+    outputPath,
   ]);
   const lines = stdout.trim().split(/\r?\n/);
   return JSON.parse(lines[lines.length - 1]);
