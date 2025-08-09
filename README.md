@@ -9,10 +9,14 @@ returned by the training flow. Pass this path to the analysis flow. Analysis
 returns a heatmap overlay image highlighting detected anomalies.
 Ensure your Python environment has the dependencies listed in CS-Flow's
 `requirements.txt` installed. In particular, `torch` and `torchvision` are
-required. OpenCV (`opencv-python-headless`) and `numpy` are also needed for
-automatic screw segmentation during training and inspection. Set the `PYTHON` environment
-variable if you want to use a custom Python interpreter. The scripts will
-automatically use CUDA if available, falling back to the CPU otherwise.
+required. OpenCV (`opencv-python-headless`), `numpy`, and
+[`segment-anything`](https://github.com/facebookresearch/segment-anything) are
+also needed for automatic screw segmentation during training and inspection.
+Download a SAM checkpoint such as `sam_vit_b.pth` and place it in
+`src/python/sam` or provide the path via the `--sam-checkpoint` option. Set the
+`PYTHON` environment variable if you want to use a custom Python interpreter.
+The scripts will automatically use CUDA if available, falling back to the CPU
+otherwise.
 
 The training wrapper patches CS-Flow's `train.py` so AUROC remains a neutral
 0.5 when the dataset only contains one class and noisy warnings are suppressed.
