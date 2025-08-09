@@ -62,13 +62,18 @@ class ImageDataset(torch.utils.data.Dataset):
         img = Image.open(self.paths[idx]).convert("RGB")
         tensor = self.tf(img)
         mask_size = self.imagesize // self.downsampling
+        mask_s = torch.ones(mask_size, mask_size)
         return {
             "image": tensor,
             "aug": tensor,
             # Placeholder mask required by GLASS. Using the correct spatial
             # dimensions (36×36) keeps mask indices aligned with extracted
-            # features during discriminator training.
-            "mask_s": torch.zeros(mask_size, mask_size),
+            # features during discriminator training. The mask must contain at
+            # least one positive value; otherwise, GLASS computes statistics on
+            # an empty tensor and raises a RuntimeError. Filling the mask with
+            # ones satisfies this requirement without relying on ground-truth
+            # annotations.
+            "mask_s": mask_s,
             "is_anomaly": torch.tensor(0),
             "mask_gt": torch.zeros(1, self.imagesize, self.imagesize),
             "image_path": str(self.paths[idx]),
