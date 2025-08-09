@@ -71,7 +71,8 @@ class SingleImageDataset(torch.utils.data.Dataset):
     def __init__(self, path: Path):
         self.path = path
         self.imagesize = 288
-        self.distribution = 0
+        # Match the manifold distribution used during training.
+        self.distribution = 2
         self.tf = transforms.Compose(
             [
                 transforms.ToTensor(),
@@ -118,15 +119,27 @@ def main() -> None:
 
     backbone = backbones.load("wideresnet50")
     model = glass_mod.GLASS(device)
+    # Use the hyperparameters recommended by the GLASS paper so the model
+    # architecture matches the training configuration.
     model.load(
         backbone=backbone,
         layers_to_extract_from=["layer2", "layer3"],
         device=device,
         input_shape=(3, dataset.imagesize, dataset.imagesize),
-        pretrain_embed_dimension=1024,
-        target_embed_dimension=1024,
-        meta_epochs=1,
+        pretrain_embed_dimension=1536,
+        target_embed_dimension=1536,
+        patchsize=3,
+        meta_epochs=640,
         eval_epochs=1,
+        dsc_layers=2,
+        dsc_hidden=1024,
+        pre_proj=1,
+        mining=1,
+        noise=0.015,
+        radius=0.75,
+        p=0.5,
+        step=20,
+        limit=392,
     )
 
     state = torch.load(args.model, map_location=device)

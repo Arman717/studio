@@ -178,20 +178,33 @@ def main() -> None:
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     dataset = ImageDataset(args.images)
-    loader = torch.utils.data.DataLoader(dataset, batch_size=2, shuffle=True)
+    # Use batch size 8 as recommended in the GLASS paper.
+    loader = torch.utils.data.DataLoader(dataset, batch_size=8, shuffle=True)
     dataloaders = {"training": loader, "testing": loader}
 
     backbone = backbones.load("wideresnet50")
     model = glass_mod.GLASS(device)
+    # Hyperparameters align with the optimal configuration suggested in the
+    # GLASS paper for unsupervised anomaly detection.
     model.load(
         backbone=backbone,
         layers_to_extract_from=["layer2", "layer3"],
         device=device,
         input_shape=(3, dataset.imagesize, dataset.imagesize),
-        pretrain_embed_dimension=1024,
-        target_embed_dimension=1024,
-        meta_epochs=1,
+        pretrain_embed_dimension=1536,
+        target_embed_dimension=1536,
+        patchsize=3,
+        meta_epochs=640,
         eval_epochs=1,
+        dsc_layers=2,
+        dsc_hidden=1024,
+        pre_proj=1,
+        mining=1,
+        noise=0.015,
+        radius=0.75,
+        p=0.5,
+        step=20,
+        limit=392,
     )
 
     model.set_model_dir(tempfile.mkdtemp(), "custom")
