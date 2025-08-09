@@ -8,7 +8,7 @@
  * - GenerateDefectProfileOutput - The return type for the generateDefectProfile function.
  */
 
-import {trainCsFlow} from '@/ai/csflow';
+import {trainGlass} from '@/ai/glass';
 import {z} from 'genkit';
 
 const GenerateDefectProfileInputSchema = z.object({
@@ -26,6 +26,6 @@ const GenerateDefectProfileOutputSchema = z.object({
 export type GenerateDefectProfileOutput = z.infer<typeof GenerateDefectProfileOutputSchema>;
 
 export async function generateDefectProfile(input: GenerateDefectProfileInput): Promise<GenerateDefectProfileOutput> {
-  const modelId = await trainCsFlow(input.referenceImages);
+  const modelId = await trainGlass(input.referenceImages);
   return {modelId};
 }

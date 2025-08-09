@@ -30,13 +30,12 @@ To get started, take a look at `src/app/page.tsx`.
 After pulling new changes, run `npm install` to ensure all dependencies, such as
 `react-webcam`, are installed before starting the dev server.
 
-## Arduino Motor Control
-The app can control two motors through an Arduino using the commands defined in
-`src/lib/arduino.ts`. Set the `ARDUINO_PORT` environment variable to the serial
-port where your Arduino is connected (for example `COM7` on Windows). If this
-variable is not provided the app attempts to auto-detect the first port that
-looks like an Arduino and falls back to `/dev/ttyACM0`. The firmware for an
-ESP8266 board is included in `docs/esp8266-motor-control.ino` and communicates
+## STM32 Motor Control
+The app can control two motors through an STM32 board using the commands defined in
+`src/lib/stm32.ts`. Set the `STM32_PORT` environment variable to the serial
+port where your board is connected (for example `COM7` on Windows). If this
+variable is not provided, the utilities default to `COM7`. Firmware for an
+STM32 Nucleo board is included in `docs/stm32-motor-control.ino` and communicates
 at 115200 baud, which is the speed used by the server utilities. The new
 **Control** tab in the UI lets you send direction and speed commands to both
 motors.

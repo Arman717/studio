@@ -3,15 +3,15 @@
 import { SerialPort } from 'serialport'
 
 let port: SerialPort | null = null
-// ESP8266 sketch uses a 115200 baud serial connection
+// STM32 firmware uses a 115200 baud serial connection
 const baudRate = 115200
 
 /**
- * Resolves the serial port to use for the Arduino/ESP8266.
- * Uses the ARDUINO_PORT env variable or falls back to `COM7`.
+ * Resolves the serial port to use for the STM32 board.
+ * Uses the STM32_PORT env variable or falls back to `COM7`.
  */
 async function resolvePortPath(): Promise<string> {
-  return process.env.ARDUINO_PORT || 'COM7'
+  return process.env.STM32_PORT || 'COM7'
 }
 
 /**
