@@ -33,7 +33,11 @@ class ImageDataset(torch.utils.data.Dataset):
     def __init__(self, paths):
         self.paths = [Path(p) for p in paths]
         self.imagesize = 288
-        self.distribution = 0
+        # Bypass GLASS distribution auto-detection, which can
+        # prematurely exit without saving a checkpoint when the
+        # expected metadata file is absent. Using the "manifold"
+        # identifier (value 2) lets training proceed normally.
+        self.distribution = 2
         self.tf = transforms.Compose(
             [
                 transforms.Resize((self.imagesize, self.imagesize)),
