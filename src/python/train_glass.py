@@ -28,6 +28,12 @@ except ModuleNotFoundError:
     print("Missing dependency numpy.", file=sys.stderr)
     raise
 
+try:
+    from segment_anything import sam_model_registry, SamAutomaticMaskGenerator
+except ModuleNotFoundError:
+    print("Missing dependency segment-anything.", file=sys.stderr)
+    raise
+
 
 def ensure_repo(repo_dir: Path) -> None:
     if repo_dir.exists():
@@ -35,37 +41,31 @@ def ensure_repo(repo_dir: Path) -> None:
     subprocess.check_call(["git", "clone", "https://github.com/cqylunlun/GLASS", str(repo_dir)])
 
 
-def remove_background(img: Image.Image):
-    gray = img.convert("L")
-    arr = np.array(gray)
-    hist = np.bincount(arr.flatten(), minlength=256)
-    total = arr.size
-    sum_total = np.dot(np.arange(256), hist)
-    sumB = 0.0
-    wB = 0.0
-    var_max = 0.0
-    threshold = 0
-    for i in range(256):
-        wB += hist[i]
-        if wB == 0:
-            continue
-        wF = total - wB
-        if wF == 0:
-            break
-        sumB += i * hist[i]
-        mB = sumB / wB
-        mF = (sum_total - sumB) / wF
-        var_between = wB * wF * (mB - mF) ** 2
-        if var_between > var_max:
-            var_max = var_between
-            threshold = i
-    mask = arr < threshold
-    # If the thresholding selects more than half the image, it's likely
-    # grabbing the background. Invert the mask so the smaller region—the
-    # screw—remains.
-    if mask.sum() > mask.size // 2:
-        mask = ~mask
-    rgb = np.array(img)
+_sam_generator: SamAutomaticMaskGenerator | None = None
+
+
+def segment_with_sam(img: Image.Image):
+    """Use Segment Anything to isolate the screw from the background."""
+    global _sam_generator
+    if _sam_generator is None:
+        checkpoint = Path(__file__).resolve().parent / "sam_vit_b_01ec64.pth"
+        if not checkpoint.exists():
+            import urllib.request
+
+            url = (
+                "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth"
+            )
+            urllib.request.urlretrieve(url, checkpoint)
+        sam = sam_model_registry["vit_b"](checkpoint=str(checkpoint))
+        sam.to("cuda" if torch.cuda.is_available() else "cpu")
+        _sam_generator = SamAutomaticMaskGenerator(sam)
+    np_img = np.array(img)
+    masks = _sam_generator.generate(np_img)
+    if not masks:
+        mask = np.ones(np_img.shape[:2], dtype=bool)
+    else:
+        mask = max(masks, key=lambda m: m["area"])["segmentation"]
+    rgb = np_img.copy()
     rgb[~mask] = 0
     return Image.fromarray(rgb), mask.astype(np.uint8)
 
@@ -102,7 +102,7 @@ class ImageDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, idx: int):
         img = Image.open(self.paths[idx]).convert("RGB")
-        seg, mask = remove_background(img)
+        seg, mask = segment_with_sam(img)
         seg = seg.resize((self.imagesize, self.imagesize))
         out_path = self.save_dir / f"{self.paths[idx].stem}.png"
         seg.save(out_path)

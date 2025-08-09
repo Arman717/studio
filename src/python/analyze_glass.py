@@ -28,6 +28,12 @@ except ModuleNotFoundError:
     print("Missing dependency numpy.", file=sys.stderr)
     raise
 
+try:
+    from segment_anything import sam_model_registry, SamAutomaticMaskGenerator
+except ModuleNotFoundError:
+    print("Missing dependency segment-anything.", file=sys.stderr)
+    raise
+
 
 def ensure_repo(repo_dir: Path) -> None:
     if repo_dir.exists():
@@ -35,34 +41,31 @@ def ensure_repo(repo_dir: Path) -> None:
     subprocess.check_call(["git", "clone", "https://github.com/cqylunlun/GLASS", str(repo_dir)])
 
 
-def remove_background(img: Image.Image):
-    gray = img.convert("L")
-    arr = np.array(gray)
-    hist = np.bincount(arr.flatten(), minlength=256)
-    total = arr.size
-    sum_total = np.dot(np.arange(256), hist)
-    sumB = 0.0
-    wB = 0.0
-    var_max = 0.0
-    threshold = 0
-    for i in range(256):
-        wB += hist[i]
-        if wB == 0:
-            continue
-        wF = total - wB
-        if wF == 0:
-            break
-        sumB += i * hist[i]
-        mB = sumB / wB
-        mF = (sum_total - sumB) / wF
-        var_between = wB * wF * (mB - mF) ** 2
-        if var_between > var_max:
-            var_max = var_between
-            threshold = i
-    mask = arr < threshold
-    if mask.sum() > mask.size // 2:
-        mask = ~mask
-    rgb = np.array(img)
+_sam_generator: SamAutomaticMaskGenerator | None = None
+
+
+def segment_with_sam(img: Image.Image) -> Image.Image:
+    """Use Segment Anything to remove the background from an image."""
+    global _sam_generator
+    if _sam_generator is None:
+        checkpoint = Path(__file__).resolve().parent / "sam_vit_b_01ec64.pth"
+        if not checkpoint.exists():
+            import urllib.request
+
+            url = (
+                "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth"
+            )
+            urllib.request.urlretrieve(url, checkpoint)
+        sam = sam_model_registry["vit_b"](checkpoint=str(checkpoint))
+        sam.to("cuda" if torch.cuda.is_available() else "cpu")
+        _sam_generator = SamAutomaticMaskGenerator(sam)
+    np_img = np.array(img)
+    masks = _sam_generator.generate(np_img)
+    if not masks:
+        mask = np.ones(np_img.shape[:2], dtype=bool)
+    else:
+        mask = max(masks, key=lambda m: m["area"])["segmentation"]
+    rgb = np_img.copy()
     rgb[~mask] = 0
     return Image.fromarray(rgb)
 
@@ -87,7 +90,7 @@ class SingleImageDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, idx: int):
         img = Image.open(self.path).convert("RGB")
-        img = remove_background(img)
+        img = segment_with_sam(img)
         img = img.resize((self.imagesize, self.imagesize))
         return {
             "image": self.tf(img),
@@ -153,8 +156,7 @@ def main() -> None:
     images, scores, masks, _, _ = model.predict(loader)
     score = float(scores[0])
     mask = masks[0]
-
-    img = remove_background(Image.open(args.image).convert("RGB"))
+    img = segment_with_sam(Image.open(args.image).convert("RGB"))
     mask = (mask - mask.min()) / (mask.max() - mask.min() + 1e-6)
     cmap = plt.get_cmap("viridis")
     colored = (cmap(mask)[:, :, :3] * 255).astype("uint8")
