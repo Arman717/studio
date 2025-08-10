@@ -75,10 +75,13 @@ class SingleImageDataset(torch.utils.data.Dataset):
     def __init__(self, path: Path):
         self.path = path
         img = Image.open(path).convert("RGB")
+        # Center-crop to a square so analysis can handle non-square inputs
+        size = min(img.width, img.height)
+        left = (img.width - size) // 2
+        top = (img.height - size) // 2
+        img = img.crop((left, top, left + size, top + size))
         self.img, _ = segment_screw(img)
-        if self.img.width != self.img.height:
-            raise ValueError("Image must be square")
-        self.imagesize = self.img.width
+        self.imagesize = size
         # Match the manifold distribution used during training.
         self.distribution = 2
         self.tf = transforms.Compose(

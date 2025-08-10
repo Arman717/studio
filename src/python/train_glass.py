@@ -106,9 +106,11 @@ class ImageDataset(torch.utils.data.Dataset):
     def __init__(self, paths):
         self.paths = [Path(p) for p in paths]
         with Image.open(self.paths[0]) as first_img:
-            if first_img.width != first_img.height:
-                raise ValueError("Training images must be square")
-            self.imagesize = first_img.width
+            # Accept non-square inputs by center-cropping them to the
+            # largest possible square based on the first image. All
+            # subsequent images are cropped to this same size so the
+            # network sees a consistent resolution.
+            self.imagesize = min(first_img.width, first_img.height)
         # GLASS training expects a "mask_s" tensor whose spatial resolution
         # matches the backbone's feature map (image size divided by the
         # dataset downsampling factor). The original GLASS datasets use a
@@ -137,8 +139,14 @@ class ImageDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, idx: int):
         img = Image.open(self.paths[idx]).convert("RGB")
-        if img.size != (self.imagesize, self.imagesize):
-            raise ValueError("All training images must share the same dimensions")
+        if img.width < self.imagesize or img.height < self.imagesize:
+            raise ValueError(
+                f"Training images must be at least {self.imagesize}px in both dimensions"
+            )
+        # Center-crop to the common square size determined from the first image
+        left = (img.width - self.imagesize) // 2
+        top = (img.height - self.imagesize) // 2
+        img = img.crop((left, top, left + self.imagesize, top + self.imagesize))
         seg, mask = segment_screw(img)
         out_path = self.save_dir / f"{self.paths[idx].stem}.png"
         seg.save(out_path)
