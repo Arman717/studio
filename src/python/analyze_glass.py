@@ -50,59 +50,40 @@ def ensure_repo(repo_dir: Path) -> None:
 _sam_generator = None
 
 
-def segment_with_sam(img: Image.Image) -> Image.Image:
-    """Use Segment Anything (v2 if installed) to remove the background."""
-    global _sam_generator
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    if _sam_generator is None:
-        if SAM2_AVAILABLE:
-            checkpoint = Path(__file__).resolve().parent / "sam2.1_hiera_large.pt"
-            cfg = Path(__file__).resolve().parent / "sam2.1_hiera_l.yaml"
-            if not checkpoint.exists() or not cfg.exists():
-                import urllib.request
+def _binary_dilate(mask: np.ndarray) -> np.ndarray:
+    padded = np.pad(mask, 1, constant_values=0)
+    return (
+        padded[1:-1, 1:-1]
+        | padded[:-2, 1:-1]
+        | padded[2:, 1:-1]
+        | padded[1:-1, :-2]
+        | padded[1:-1, 2:]
+        | padded[:-2, :-2]
+        | padded[:-2, 2:]
+        | padded[2:, :-2]
+        | padded[2:, 2:]
+    )
 
-                if not checkpoint.exists():
-                    url_ckpt = (
-                        "https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_large.pt"
-                    )
-                    urllib.request.urlretrieve(url_ckpt, checkpoint)
-                if not cfg.exists():
-                    url_cfg = (
-                        "https://raw.githubusercontent.com/facebookresearch/segment-anything-2/main/sam2/configs/sam2.1/sam2.1_hiera_l.yaml"
-                    )
-                    urllib.request.urlretrieve(url_cfg, cfg)
-            sam = build_sam2(str(cfg), str(checkpoint), device=device, apply_postprocessing=False)
-            _sam_generator = SAM2AutomaticMaskGenerator(sam)
-        else:
-            checkpoint = Path(__file__).resolve().parent / "sam_vit_h_4b8939.pth"
-            if not checkpoint.exists():
-                import urllib.request
 
-                url = (
-                    "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth"
-                )
-                urllib.request.urlretrieve(url, checkpoint)
-            sam = sam_model_registry["vit_h"](checkpoint=str(checkpoint))
-            sam.to(device)
-            _sam_generator = SamAutomaticMaskGenerator(sam)
-    np_img = np.array(img)
-    masks = _sam_generator.generate(np_img)
-    if not masks:
-        mask = np.ones(np_img.shape[:2], dtype=bool)
-    else:
-        h, w = np_img.shape[:2]
-        total_area = h * w
-        valid = [m for m in masks if m.get("area", 0) < 0.9 * total_area]
-        valid.sort(key=lambda m: m.get("area", 0), reverse=True)
-        combined = np.zeros((h, w), dtype=bool)
-        for m in valid[:3]:
-            combined |= m["segmentation"]
-        if not combined.any():
-            combined = max(masks, key=lambda m: m.get("area", 0))["segmentation"]
-        mask = combined
-    rgb = np_img.copy()
-    rgb[~mask] = 0
-    return Image.fromarray(rgb)
+def _binary_erode(mask: np.ndarray) -> np.ndarray:
+    padded = np.pad(mask, 1, constant_values=0)
+    return (
+        padded[1:-1, 1:-1]
+        & padded[:-2, 1:-1]
+        & padded[2:, 1:-1]
+        & padded[1:-1, :-2]
+        & padded[1:-1, 2:]
+        & padded[:-2, :-2]
+        & padded[:-2, 2:]
+        & padded[2:, :-2]
+        & padded[2:, 2:]
+    )
+
+
+def _binary_close(mask: np.ndarray) -> np.ndarray:
+    return _binary_erode(_binary_dilate(mask))
+
+
 
 
 class SingleImageDataset(torch.utils.data.Dataset):
@@ -214,5 +195,111 @@ def main() -> None:
     print(json.dumps(result))
 
 
+def segment_with_sam(img: Image.Image) -> Image.Image:
+    """Use Segment Anything (v2 if installed) to remove the background."""
+    global _sam_generator
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    if _sam_generator is None:
+        if SAM2_AVAILABLE:
+            checkpoint = Path(__file__).resolve().parent / "sam2.1_hiera_large.pt"
+            cfg = Path(__file__).resolve().parent / "sam2.1_hiera_l.yaml"
+            if not checkpoint.exists() or not cfg.exists():
+                import urllib.request
+                if not checkpoint.exists():
+                    url_ckpt = "https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_large.pt"
+                    urllib.request.urlretrieve(url_ckpt, checkpoint)
+                if not cfg.exists():
+                    url_cfg = "https://raw.githubusercontent.com/facebookresearch/segment-anything-2/main/sam2/configs/sam2.1/sam2.1_hiera_l.yaml"
+                    urllib.request.urlretrieve(url_cfg, cfg)
+            sam = build_sam2(str(cfg), str(checkpoint), device=device, apply_postprocessing=False)
+            params = dict(
+                points_per_side=64,
+                points_per_batch=256,
+                crop_n_layers=1,
+                crop_overlap_ratio=0.5,
+                pred_iou_thresh=0.82,
+                stability_score_thresh=0.88,
+                min_mask_region_area=100,
+                output_mode="binary_mask",
+            )
+            _sam_generator = SAM2AutomaticMaskGenerator(sam, **params)
+        else:
+            checkpoint = Path(__file__).resolve().parent / "sam_vit_h_4b8939.pth"
+            if not checkpoint.exists():
+                import urllib.request
+                url = "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth"
+                urllib.request.urlretrieve(url, checkpoint)
+            sam = sam_model_registry["vit_h"](checkpoint=str(checkpoint))
+            sam.to(device)
+            params = dict(
+                points_per_side=64,
+                points_per_batch=256,
+                crop_n_layers=1,
+                crop_overlap_ratio=0.5,
+                pred_iou_thresh=0.82,
+                stability_score_thresh=0.88,
+                min_mask_region_area=100,
+                output_mode="binary_mask",
+            )
+            _sam_generator = SamAutomaticMaskGenerator(sam, **params)
+    np_img = np.array(img)
+    gray = np_img.mean(axis=2).astype(np.uint8)
+    coords = np.column_stack(np.where(gray > 0))
+    h, w = gray.shape
+    if coords.size:
+        y0, x0 = coords.min(axis=0)
+        y1, x1 = coords.max(axis=0) + 1
+        pad = 20
+        y0 = max(0, y0 - pad)
+        x0 = max(0, x0 - pad)
+        y1 = min(h, y1 + pad)
+        x1 = min(w, x1 + pad)
+    else:
+        y0, x0, y1, x1 = 0, 0, h, w
+    crop = img.crop((x0, y0, x1, y1))
+    cw, ch = crop.size
+    scale = 1.0
+    if min(cw, ch) < 80:
+        scale = 80.0 / min(cw, ch)
+        crop = crop.resize((int(cw * scale), int(ch * scale)), Image.BICUBIC)
+    np_crop = np.array(crop)
+    masks = _sam_generator.generate(np_crop)
+    if not masks:
+        mask = np.ones(np_crop.shape[:2], dtype=bool)
+    else:
+        total_area = np_crop.shape[0] * np_crop.shape[1]
+        valid = [m for m in masks if m.get("area", 0) < 0.9 * total_area]
+        valid.sort(key=lambda m: m.get("area", 0), reverse=True)
+        def bbox(m):
+            ys, xs = np.where(m)
+            return ys.min(), xs.min(), ys.max(), xs.max()
+        base = valid[0]["segmentation"]
+        base_box = bbox(base)
+        for cand in valid[1:]:
+            seg = cand["segmentation"]
+            ys, xs = np.where(seg)
+            if ys.size == 0:
+                continue
+            y0c, x0c, y1c, x1c = ys.min(), xs.min(), ys.max(), xs.max()
+            elong = max(y1c - y0c + 1, x1c - x0c + 1) / max(1, min(y1c - y0c + 1, x1c - x0c + 1))
+            bb0 = max(0, base_box[0] - 2)
+            bb1 = max(0, base_box[1] - 2)
+            bb2 = min(np_crop.shape[0] - 1, base_box[2] + 2)
+            bb3 = min(np_crop.shape[1] - 1, base_box[3] + 2)
+            if (y0c <= bb2 and y1c >= bb0 and x0c <= bb3 and x1c >= bb1) or elong >= 2.5:
+                base |= seg
+                base_box = bbox(base)
+        mask = _binary_close(base)
+    if scale != 1.0:
+        mask_img = Image.fromarray((mask.astype(np.uint8) * 255))
+        mask_img = mask_img.resize((cw, ch), Image.NEAREST)
+        mask = np.array(mask_img, dtype=bool)
+    full_mask = np.zeros((h, w), dtype=bool)
+    full_mask[y0:y1, x0:x1] = mask
+    rgb = np_img.copy()
+    rgb[~full_mask] = 0
+    return Image.fromarray(rgb)
+
 if __name__ == "__main__":
     main()
+
