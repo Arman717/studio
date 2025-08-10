@@ -10,7 +10,7 @@ const int ENA = D6;  // PA7 (PWM)
 
 // Motor B pins
 const int IN3 = D4;  // PA0 
-const int IN4 = D5;  // PA1 
+const int IN4 = D7;  // PA1
 const int ENB = D9;  // PB1 (PWM)
 
 // Motor speeds (0-1023)
