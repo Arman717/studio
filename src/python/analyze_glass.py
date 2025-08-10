@@ -74,7 +74,11 @@ def _binary_close(mask: np.ndarray) -> np.ndarray:
 class SingleImageDataset(torch.utils.data.Dataset):
     def __init__(self, path: Path):
         self.path = path
-        self.imagesize = 288
+        img = Image.open(path).convert("RGB")
+        self.img, _ = segment_screw(img)
+        if self.img.width != self.img.height:
+            raise ValueError("Image must be square")
+        self.imagesize = self.img.width
         # Match the manifold distribution used during training.
         self.distribution = 2
         self.tf = transforms.Compose(
@@ -90,11 +94,8 @@ class SingleImageDataset(torch.utils.data.Dataset):
         return 1
 
     def __getitem__(self, idx: int):
-        img = Image.open(self.path).convert("RGB")
-        img, _ = segment_screw(img)
-        img = img.resize((self.imagesize, self.imagesize))
         return {
-            "image": self.tf(img),
+            "image": self.tf(self.img),
             "is_anomaly": torch.tensor(0),
             "mask_gt": torch.zeros(1, self.imagesize, self.imagesize),
             "image_path": str(self.path),
@@ -160,11 +161,11 @@ def main() -> None:
     images, scores, masks, _, _ = model.predict(loader)
     score = float(scores[0])
     mask = masks[0]
-    img, _ = segment_screw(Image.open(args.image).convert("RGB"))
+    img = dataset.img
     mask = (mask - mask.min()) / (mask.max() - mask.min() + 1e-6)
     cmap = plt.get_cmap("viridis")
     colored = (cmap(mask)[:, :, :3] * 255).astype("uint8")
-    heat_img = Image.fromarray(colored).resize(img.size)
+    heat_img = Image.fromarray(colored)
     overlay = Image.blend(img, heat_img, alpha=0.5)
     if args.output:
         overlay.save(args.output)

@@ -105,7 +105,10 @@ def segment_screw(img: Image.Image):
 class ImageDataset(torch.utils.data.Dataset):
     def __init__(self, paths):
         self.paths = [Path(p) for p in paths]
-        self.imagesize = 288
+        with Image.open(self.paths[0]) as first_img:
+            if first_img.width != first_img.height:
+                raise ValueError("Training images must be square")
+            self.imagesize = first_img.width
         # GLASS training expects a "mask_s" tensor whose spatial resolution
         # matches the backbone's feature map (image size divided by the
         # dataset downsampling factor). The original GLASS datasets use a
@@ -134,13 +137,14 @@ class ImageDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, idx: int):
         img = Image.open(self.paths[idx]).convert("RGB")
+        if img.size != (self.imagesize, self.imagesize):
+            raise ValueError("All training images must share the same dimensions")
         seg, mask = segment_screw(img)
-        seg = seg.resize((self.imagesize, self.imagesize))
         out_path = self.save_dir / f"{self.paths[idx].stem}.png"
         seg.save(out_path)
         tensor = self.tf(seg)
         mask_size = self.imagesize // self.downsampling
-        mask_img_full = Image.fromarray(mask * 255).resize((self.imagesize, self.imagesize), Image.NEAREST)
+        mask_img_full = Image.fromarray(mask * 255)
         mask_img = mask_img_full.resize((mask_size, mask_size), Image.NEAREST)
         mask_s = torch.from_numpy(np.array(mask_img, dtype=np.float32) / 255.0)
         return {
