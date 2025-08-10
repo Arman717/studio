@@ -129,7 +129,6 @@ export function ReferenceTab({ onModelTrained }: ReferenceTabProps) {
     setTrainedModelId(null);
     setShowCamera(true);
     await sendCommand("A1");
-    await sendCommand("B1");
     const images: string[] = [];
     let count = 0;
     const interval = setInterval(async () => {
@@ -142,7 +141,6 @@ export function ReferenceTab({ onModelTrained }: ReferenceTabProps) {
     setTimeout(async () => {
       clearInterval(interval);
       await sendCommand("A0");
-      await sendCommand("B0");
       setStatus("training");
       try {
         const result = await generateDefectProfile({ referenceImages: images });
