@@ -28,11 +28,17 @@ except ModuleNotFoundError:
     print("Missing dependency numpy.", file=sys.stderr)
     raise
 
-try:
-    from segment_anything import sam_model_registry, SamAutomaticMaskGenerator
+SAM2_AVAILABLE = False
+try:  # Prefer Segment Anything 2 if available
+    from sam2.build_sam import build_sam2  # type: ignore
+    from sam2.automatic_mask_generator import SAM2AutomaticMaskGenerator  # type: ignore
+    SAM2_AVAILABLE = True
 except ModuleNotFoundError:
-    print("Missing dependency segment-anything.", file=sys.stderr)
-    raise
+    try:
+        from segment_anything import sam_model_registry, SamAutomaticMaskGenerator  # type: ignore
+    except ModuleNotFoundError:
+        print("Missing dependency sam2 or segment-anything.", file=sys.stderr)
+        raise
 
 
 def ensure_repo(repo_dir: Path) -> None:
@@ -41,30 +47,50 @@ def ensure_repo(repo_dir: Path) -> None:
     subprocess.check_call(["git", "clone", "https://github.com/cqylunlun/GLASS", str(repo_dir)])
 
 
-_sam_generator: SamAutomaticMaskGenerator | None = None
+_sam_generator = None
 
 
 def segment_with_sam(img: Image.Image):
-    """Use Segment Anything to isolate the screw from the background."""
+    """Use Segment Anything (v2 if installed) to isolate the screw."""
     global _sam_generator
+    device = "cuda" if torch.cuda.is_available() else "cpu"
     if _sam_generator is None:
-        checkpoint = Path(__file__).resolve().parent / "sam_vit_h_4b8939.pth"
-        if not checkpoint.exists():
-            import urllib.request
+        if SAM2_AVAILABLE:
+            checkpoint = Path(__file__).resolve().parent / "sam2.1_hiera_large.pt"
+            cfg = Path(__file__).resolve().parent / "sam2.1_hiera_l.yaml"
+            if not checkpoint.exists() or not cfg.exists():
+                import urllib.request
 
-            url = (
-                "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth"
-            )
-            urllib.request.urlretrieve(url, checkpoint)
-        sam = sam_model_registry["vit_h"](checkpoint=str(checkpoint))
-        sam.to("cuda" if torch.cuda.is_available() else "cpu")
-        _sam_generator = SamAutomaticMaskGenerator(sam)
+                if not checkpoint.exists():
+                    url_ckpt = (
+                        "https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_large.pt"
+                    )
+                    urllib.request.urlretrieve(url_ckpt, checkpoint)
+                if not cfg.exists():
+                    url_cfg = (
+                        "https://raw.githubusercontent.com/facebookresearch/segment-anything-2/main/sam2/configs/sam2.1/sam2.1_hiera_l.yaml"
+                    )
+                    urllib.request.urlretrieve(url_cfg, cfg)
+            sam = build_sam2(str(cfg), str(checkpoint), device=device, apply_postprocessing=False)
+            _sam_generator = SAM2AutomaticMaskGenerator(sam)
+        else:
+            checkpoint = Path(__file__).resolve().parent / "sam_vit_h_4b8939.pth"
+            if not checkpoint.exists():
+                import urllib.request
+
+                url = (
+                    "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth"
+                )
+                urllib.request.urlretrieve(url, checkpoint)
+            sam = sam_model_registry["vit_h"](checkpoint=str(checkpoint))
+            sam.to(device)
+            _sam_generator = SamAutomaticMaskGenerator(sam)
     np_img = np.array(img)
     masks = _sam_generator.generate(np_img)
     if not masks:
         mask = np.ones(np_img.shape[:2], dtype=bool)
     else:
-        mask = max(masks, key=lambda m: m["area"])["segmentation"]
+        mask = max(masks, key=lambda m: m.get("area", 0))["segmentation"]
     rgb = np_img.copy()
     rgb[~mask] = 0
     return Image.fromarray(rgb), mask.astype(np.uint8)
