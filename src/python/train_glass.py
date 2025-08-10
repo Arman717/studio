@@ -48,15 +48,15 @@ def segment_with_sam(img: Image.Image):
     """Use Segment Anything to isolate the screw from the background."""
     global _sam_generator
     if _sam_generator is None:
-        checkpoint = Path(__file__).resolve().parent / "sam_vit_b_01ec64.pth"
+        checkpoint = Path(__file__).resolve().parent / "sam_vit_h_4b8939.pth"
         if not checkpoint.exists():
             import urllib.request
 
             url = (
-                "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth"
+                "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth"
             )
             urllib.request.urlretrieve(url, checkpoint)
-        sam = sam_model_registry["vit_b"](checkpoint=str(checkpoint))
+        sam = sam_model_registry["vit_h"](checkpoint=str(checkpoint))
         sam.to("cuda" if torch.cuda.is_available() else "cpu")
         _sam_generator = SamAutomaticMaskGenerator(sam)
     np_img = np.array(img)
