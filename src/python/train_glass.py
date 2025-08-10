@@ -90,7 +90,16 @@ def segment_with_sam(img: Image.Image):
     if not masks:
         mask = np.ones(np_img.shape[:2], dtype=bool)
     else:
-        mask = max(masks, key=lambda m: m.get("area", 0))["segmentation"]
+        h, w = np_img.shape[:2]
+        total_area = h * w
+        valid = [m for m in masks if m.get("area", 0) < 0.9 * total_area]
+        valid.sort(key=lambda m: m.get("area", 0), reverse=True)
+        combined = np.zeros((h, w), dtype=bool)
+        for m in valid[:3]:
+            combined |= m["segmentation"]
+        if not combined.any():
+            combined = max(masks, key=lambda m: m.get("area", 0))["segmentation"]
+        mask = combined
     rgb = np_img.copy()
     rgb[~mask] = 0
     return Image.fromarray(rgb), mask.astype(np.uint8)
