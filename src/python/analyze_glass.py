@@ -9,6 +9,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import Optional, Tuple
 
 from PIL import Image
 
@@ -69,10 +70,64 @@ def _binary_close(mask: np.ndarray) -> np.ndarray:
     return _binary_erode(_binary_dilate(mask))
 
 
+def _binary_open(mask: np.ndarray) -> np.ndarray:
+    return _binary_dilate(_binary_erode(mask))
+
+
+def _fill_holes(mask: np.ndarray) -> np.ndarray:
+    from collections import deque
+
+    h, w = mask.shape
+    visited = np.zeros((h, w), dtype=bool)
+    q = deque()
+    for x in range(w):
+        q.append((0, x))
+        q.append((h - 1, x))
+    for y in range(h):
+        q.append((y, 0))
+        q.append((y, w - 1))
+    while q:
+        y, x = q.popleft()
+        if 0 <= y < h and 0 <= x < w and not visited[y, x] and mask[y, x] == 0:
+            visited[y, x] = True
+            q.extend([(y - 1, x), (y + 1, x), (y, x - 1), (y, x + 1)])
+    holes = (~visited) & (mask == 0)
+    filled = mask.copy()
+    filled[holes] = 1
+    return filled
+
+
+def _crop_to_bbox(img: Image.Image, mask: np.ndarray, size: int) -> Tuple[Image.Image, np.ndarray]:
+    ys, xs = np.where(mask)
+    if xs.size == 0 or ys.size == 0:
+        return img.resize((size, size)), np.array(Image.fromarray(mask * 255).resize((size, size), Image.NEAREST)) // 255
+    x1, x2 = xs.min(), xs.max()
+    y1, y2 = ys.min(), ys.max()
+    pad = 4
+    x1 = max(0, x1 - pad)
+    y1 = max(0, y1 - pad)
+    x2 = min(mask.shape[1] - 1, x2 + pad)
+    y2 = min(mask.shape[0] - 1, y2 + pad)
+    w = x2 - x1 + 1
+    h = y2 - y1 + 1
+    side = max(w, h)
+    cx = (x1 + x2) // 2
+    cy = (y1 + y2) // 2
+    x1 = max(0, cx - side // 2)
+    y1 = max(0, cy - side // 2)
+    x2 = min(mask.shape[1], x1 + side)
+    y2 = min(mask.shape[0], y1 + side)
+    img_c = img.crop((x1, y1, x2, y2)).resize((size, size), Image.BILINEAR)
+    mask_c = Image.fromarray((mask[y1:y2, x1:x2] * 255).astype(np.uint8)).resize(
+        (size, size), Image.NEAREST
+    )
+    return img_c, np.array(mask_c, dtype=np.uint8) // 255
+
+
 
 
 class SingleImageDataset(torch.utils.data.Dataset):
-    def __init__(self, path: Path):
+    def __init__(self, path: Path, background: Optional[Image.Image] = None):
         self.path = path
         img = Image.open(path).convert("RGB")
         # Center-crop to a square so analysis can handle non-square inputs
@@ -80,7 +135,10 @@ class SingleImageDataset(torch.utils.data.Dataset):
         left = (img.width - size) // 2
         top = (img.height - size) // 2
         img = img.crop((left, top, left + size, top + size))
-        self.img, _ = segment_screw(img)
+        bg = None
+        if background is not None:
+            bg = background.crop((left, top, left + size, top + size))
+        self.img, _ = segment_screw(img, bg, size)
         self.imagesize = size
         # Match the manifold distribution used during training.
         self.distribution = 2
@@ -112,6 +170,11 @@ def main() -> None:
     parser.add_argument(
         "--output", help="Optional path to save the visualization overlay"
     )
+    parser.add_argument(
+        "--background",
+        action="append",
+        help="Background image of the empty rig; specify multiple times to build a median model",
+    )
     args = parser.parse_args()
 
     repo_dir = Path(__file__).resolve().parent / "glass_repo"
@@ -125,7 +188,18 @@ def main() -> None:
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    dataset = SingleImageDataset(Path(args.image))
+    bg_paths = args.background
+    if bg_paths is None:
+        default_bg = Path(f"{args.model}.background.png")
+        if default_bg.exists():
+            bg_paths = [str(default_bg)]
+    background_img = None
+    if bg_paths:
+        bg_arrays = [np.array(Image.open(p).convert("RGB"), dtype=np.uint8) for p in bg_paths]
+        median = np.median(np.stack(bg_arrays, axis=0), axis=0).astype(np.uint8)
+        background_img = Image.fromarray(median)
+
+    dataset = SingleImageDataset(Path(args.image), background_img)
     loader = torch.utils.data.DataLoader(dataset, batch_size=1, shuffle=False)
 
     backbone = backbones.load("wideresnet50")
@@ -184,38 +258,32 @@ def main() -> None:
     print(json.dumps(result))
 
 
-def segment_screw(img: Image.Image):
-    """Segment the screw using Otsu thresholding and return image and mask."""
+def segment_screw(
+    img: Image.Image,
+    background: Optional[Image.Image] = None,
+    output_size: Optional[int] = None,
+    threshold: int = 20,
+):
+    """Segment the screw by subtracting a background model and thresholding."""
     np_img = np.array(img)
-    gray = np_img.mean(axis=2).astype(np.uint8)
-    hist = np.bincount(gray.flatten(), minlength=256)
-    total = gray.size
-    sum_total = np.dot(np.arange(256), hist)
-    sumB = 0.0
-    wB = 0.0
-    maximum = 0.0
-    threshold = 0
-    for i in range(256):
-        wB += hist[i]
-        if wB == 0:
-            continue
-        wF = total - wB
-        if wF == 0:
-            break
-        sumB += i * hist[i]
-        mB = sumB / wB
-        mF = (sum_total - sumB) / wF
-        between = wB * wF * (mB - mF) ** 2
-        if between > maximum:
-            maximum = between
-            threshold = i
+    if background is not None:
+        bg = background.resize(img.size)
+        np_bg = np.array(bg)
+        diff = np.abs(np_img.astype(np.int16) - np_bg.astype(np.int16))
+        gray = diff.mean(axis=2).astype(np.uint8)
+    else:
+        gray = np_img.mean(axis=2).astype(np.uint8)
     mask = gray > threshold
-    if mask.mean() > 0.5:
-        mask = gray < threshold
-    mask = _binary_close(mask)
+    mask = _binary_close(_binary_open(mask))
+    mask = _fill_holes(mask)
+    for _ in range(2):
+        mask = _binary_dilate(mask)
     rgb = np_img.copy()
     rgb[~mask] = 0
-    return Image.fromarray(rgb), mask.astype(np.uint8)
+    out_img = Image.fromarray(rgb)
+    if output_size is not None:
+        out_img, mask = _crop_to_bbox(out_img, mask, output_size)
+    return out_img, mask.astype(np.uint8)
 
 if __name__ == "__main__":
     main()

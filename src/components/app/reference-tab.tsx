@@ -38,7 +38,7 @@ export function ReferenceTab({ onModelTrained }: ReferenceTabProps) {
   const [progress, setProgress] = useState(0);
   const [trainedModelId, setTrainedModelId] = useState<string | null>(null);
   const [captureDuration, setCaptureDuration] = useState(60);
-  const [backgroundImage, setBackgroundImage] = useState<string | null>(null);
+  const [backgroundImages, setBackgroundImages] = useState<string[]>([]);
   const [selecting, setSelecting] = useState(false);
   const [cropRect, setCropRect] = useState<{
     x: number;
@@ -125,11 +125,14 @@ export function ReferenceTab({ onModelTrained }: ReferenceTabProps) {
   }
 
   const captureBackground = async () => {
-    const img = webcamRef.current?.getScreenshot();
-    if (img) {
-      setBackgroundImage(await cropImage(img));
-      toast({ title: "Background captured" });
+    const frames: string[] = [];
+    for (let i = 0; i < 30; i++) {
+      const img = webcamRef.current?.getScreenshot();
+      if (img) frames.push(await cropImage(img));
+      await new Promise(res => setTimeout(res, 100));
     }
+    setBackgroundImages(frames);
+    toast({ title: "Background captured", description: `${frames.length} frames` });
   };
 
   const startProcess = async () => {
@@ -152,7 +155,7 @@ export function ReferenceTab({ onModelTrained }: ReferenceTabProps) {
       await sendCommand("A0");
       setStatus("training");
       try {
-        const result = await generateDefectProfile({ referenceImages: images, backgroundImage: backgroundImage ?? undefined });
+        const result = await generateDefectProfile({ referenceImages: images, backgroundImages: backgroundImages.length ? backgroundImages : undefined });
         setTrainedModelId(result.modelId);
         onModelTrained(result.modelId);
         toast({
@@ -275,7 +278,7 @@ export function ReferenceTab({ onModelTrained }: ReferenceTabProps) {
       </CardContent>
   <CardFooter className="flex flex-col gap-4">
         <Button onClick={captureBackground} disabled={status !== "idle"} className="w-full" variant="outline">
-          {backgroundImage ? "Retake Background" : "Capture Background"}
+          {backgroundImages.length ? `Retake Background (${backgroundImages.length})` : "Capture Background"}
         </Button>
         <div className="flex items-center gap-2 w-full">
           <label className="text-sm whitespace-nowrap text-black" htmlFor="trainTime">Training Time (s)</label>

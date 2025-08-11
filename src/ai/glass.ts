@@ -54,7 +54,7 @@ export async function analyzeWithGlass(
 
 export async function trainGlass(
   referenceImages: string[],
-  backgroundImage?: string,
+  backgroundImages?: string[],
 ): Promise<string> {
   const imagePaths: string[] = [];
   for (const img of referenceImages) {
@@ -64,17 +64,20 @@ export async function trainGlass(
     await writeFile(path, buffer);
     imagePaths.push(path);
   }
-  let backgroundPath: string | undefined;
-  if (backgroundImage) {
-    const [, data] = backgroundImage.split(',');
-    const buffer = Buffer.from(data, 'base64');
-    backgroundPath = join(tmpdir(), `glass-bg-${Date.now()}.png`);
-    await writeFile(backgroundPath, buffer);
+  const backgroundPaths: string[] = [];
+  if (backgroundImages) {
+    for (const img of backgroundImages) {
+      const [, data] = img.split(',');
+      const buffer = Buffer.from(data, 'base64');
+      const path = join(tmpdir(), `glass-bg-${Date.now()}-${Math.random()}.png`);
+      await writeFile(path, buffer);
+      backgroundPaths.push(path);
+    }
   }
   const modelPath = join(tmpdir(), `glass-model-${Date.now()}.pth`);
   const args = ['src/python/train_glass.py', '--output', modelPath];
-  if (backgroundPath) {
-    args.push('--background', backgroundPath);
+  for (const bg of backgroundPaths) {
+    args.push('--background', bg);
   }
   args.push(...imagePaths);
   const stdout = await runPython(args);

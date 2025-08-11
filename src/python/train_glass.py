@@ -70,13 +70,72 @@ def _binary_close(mask: np.ndarray) -> np.ndarray:
     return _binary_erode(_binary_dilate(mask))
 
 
+def _binary_open(mask: np.ndarray) -> np.ndarray:
+    return _binary_dilate(_binary_erode(mask))
 
-def segment_screw(img: Image.Image, background: Optional[Image.Image] = None):
-    """Segment the screw using Otsu thresholding.
 
-    If a background image without the screw is provided, it is first
-    subtracted from ``img`` to remove static scenery before thresholding.
-    Returns the segmented RGB image and the binary mask.
+def _fill_holes(mask: np.ndarray) -> np.ndarray:
+    from collections import deque
+
+    h, w = mask.shape
+    visited = np.zeros((h, w), dtype=bool)
+    q = deque()
+    for x in range(w):
+        q.append((0, x))
+        q.append((h - 1, x))
+    for y in range(h):
+        q.append((y, 0))
+        q.append((y, w - 1))
+    while q:
+        y, x = q.popleft()
+        if 0 <= y < h and 0 <= x < w and not visited[y, x] and mask[y, x] == 0:
+            visited[y, x] = True
+            q.extend([(y - 1, x), (y + 1, x), (y, x - 1), (y, x + 1)])
+    holes = (~visited) & (mask == 0)
+    filled = mask.copy()
+    filled[holes] = 1
+    return filled
+
+
+def _crop_to_bbox(img: Image.Image, mask: np.ndarray, size: int) -> Tuple[Image.Image, np.ndarray]:
+    ys, xs = np.where(mask)
+    if xs.size == 0 or ys.size == 0:
+        return img.resize((size, size)), np.array(Image.fromarray(mask * 255).resize((size, size), Image.NEAREST)) // 255
+    x1, x2 = xs.min(), xs.max()
+    y1, y2 = ys.min(), ys.max()
+    pad = 4
+    x1 = max(0, x1 - pad)
+    y1 = max(0, y1 - pad)
+    x2 = min(mask.shape[1] - 1, x2 + pad)
+    y2 = min(mask.shape[0] - 1, y2 + pad)
+    w = x2 - x1 + 1
+    h = y2 - y1 + 1
+    side = max(w, h)
+    cx = (x1 + x2) // 2
+    cy = (y1 + y2) // 2
+    x1 = max(0, cx - side // 2)
+    y1 = max(0, cy - side // 2)
+    x2 = min(mask.shape[1], x1 + side)
+    y2 = min(mask.shape[0], y1 + side)
+    img_c = img.crop((x1, y1, x2, y2)).resize((size, size), Image.BILINEAR)
+    mask_c = Image.fromarray((mask[y1:y2, x1:x2] * 255).astype(np.uint8)).resize(
+        (size, size), Image.NEAREST
+    )
+    return img_c, np.array(mask_c, dtype=np.uint8) // 255
+
+
+
+def segment_screw(
+    img: Image.Image,
+    background: Optional[Image.Image] = None,
+    output_size: Optional[int] = None,
+    threshold: int = 20,
+):
+    """Segment the screw by subtracting a background model and thresholding.
+
+    ``background`` is a median-composited image of the empty rig. ``output_size``
+    optionally crops a tight bounding box around the screw and resizes to this
+    size. Returns the segmented RGB image and the binary mask.
     """
     np_img = np.array(img)
     if background is not None:
@@ -86,36 +145,19 @@ def segment_screw(img: Image.Image, background: Optional[Image.Image] = None):
         gray = diff.mean(axis=2).astype(np.uint8)
     else:
         gray = np_img.mean(axis=2).astype(np.uint8)
-    hist = np.bincount(gray.flatten(), minlength=256)
-    total = gray.size
-    sum_total = np.dot(np.arange(256), hist)
-    sumB = 0.0
-    wB = 0.0
-    maximum = 0.0
-    threshold = 0
-    for i in range(256):
-        wB += hist[i]
-        if wB == 0:
-            continue
-        wF = total - wB
-        if wF == 0:
-            break
-        sumB += i * hist[i]
-        mB = sumB / wB
-        mF = (sum_total - sumB) / wF
-        between = wB * wF * (mB - mF) ** 2
-        if between > maximum:
-            maximum = between
-            threshold = i
     mask = gray > threshold
-    if mask.mean() > 0.5:
-        mask = gray < threshold
-    mask = _binary_close(mask)
+    mask = _binary_close(_binary_open(mask))
+    mask = _fill_holes(mask)
+    for _ in range(2):
+        mask = _binary_dilate(mask)
     rgb = np_img.copy()
     rgb[~mask] = 0
-    return Image.fromarray(rgb), mask.astype(np.uint8)
+    out_img = Image.fromarray(rgb)
+    if output_size is not None:
+        out_img, mask = _crop_to_bbox(out_img, mask, output_size)
+    return out_img, mask.astype(np.uint8)
 class ImageDataset(torch.utils.data.Dataset):
-    def __init__(self, paths, background: Optional[str] = None):
+    def __init__(self, paths, background: Optional[list[str]] = None):
         self.paths = [Path(p) for p in paths]
         with Image.open(self.paths[0]) as first_img:
             # Accept non-square inputs by center-cropping them to the
@@ -124,13 +166,20 @@ class ImageDataset(torch.utils.data.Dataset):
             # network sees a consistent resolution.
             self.imagesize = min(first_img.width, first_img.height)
         self.background: Optional[Image.Image] = None
-        if background is not None:
-            bg_img = Image.open(background).convert("RGB")
-            if bg_img.width < self.imagesize or bg_img.height < self.imagesize:
-                raise ValueError(
-                    f"Background image must be at least {self.imagesize}px in both dimensions"
-                )
-            self.background = bg_img
+        if background:
+            bg_arrays = []
+            for p in background:
+                bg_img = Image.open(p).convert("RGB")
+                if bg_img.width < self.imagesize or bg_img.height < self.imagesize:
+                    raise ValueError(
+                        f"Background image must be at least {self.imagesize}px in both dimensions"
+                    )
+                left = (bg_img.width - self.imagesize) // 2
+                top = (bg_img.height - self.imagesize) // 2
+                bg_crop = bg_img.crop((left, top, left + self.imagesize, top + self.imagesize))
+                bg_arrays.append(np.array(bg_crop, dtype=np.uint8))
+            median = np.median(np.stack(bg_arrays, axis=0), axis=0).astype(np.uint8)
+            self.background = Image.fromarray(median)
         # Spatial resolution of the segmentation mask expected by the GLASS
         # discriminator. This is determined dynamically from the backbone's
         # patch shape and therefore populated later by ``set_mask_shape`` once
@@ -169,10 +218,8 @@ class ImageDataset(torch.utils.data.Dataset):
         left = (img.width - self.imagesize) // 2
         top = (img.height - self.imagesize) // 2
         img = img.crop((left, top, left + self.imagesize, top + self.imagesize))
-        bg = None
-        if self.background is not None:
-            bg = self.background.crop((left, top, left + self.imagesize, top + self.imagesize))
-        seg, mask = segment_screw(img, bg)
+        bg = self.background
+        seg, mask = segment_screw(img, bg, self.imagesize)
         out_path = self.save_dir / f"{self.paths[idx].stem}.png"
         seg.save(out_path)
         tensor = self.tf(seg)
@@ -205,7 +252,8 @@ def main() -> None:
     parser.add_argument("images", nargs="*", help="Training images")
     parser.add_argument(
         "--background",
-        help="Image of the background without the screw for subtraction",
+        action="append",
+        help="Background image of the empty rig; specify multiple times to build a median model",
     )
     args = parser.parse_args()
 
@@ -305,6 +353,9 @@ def main() -> None:
 
     ckpt = Path(model.ckpt_dir) / "ckpt.pth"
     shutil.copy(ckpt, args.output)
+    if dataset.background is not None:
+        bg_out = Path(f"{args.output}.background.png")
+        dataset.background.save(bg_out)
 
     print(json.dumps({"modelId": str(args.output)}))
 
