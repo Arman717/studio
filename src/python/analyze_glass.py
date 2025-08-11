@@ -97,48 +97,17 @@ def _fill_holes(mask: np.ndarray) -> np.ndarray:
     return filled
 
 
-def _crop_to_bbox(img: Image.Image, mask: np.ndarray, size: int) -> Tuple[Image.Image, np.ndarray]:
-    ys, xs = np.where(mask)
-    if xs.size == 0 or ys.size == 0:
-        return img.resize((size, size)), np.array(Image.fromarray(mask * 255).resize((size, size), Image.NEAREST)) // 255
-    x1, x2 = xs.min(), xs.max()
-    y1, y2 = ys.min(), ys.max()
-    pad = 4
-    x1 = max(0, x1 - pad)
-    y1 = max(0, y1 - pad)
-    x2 = min(mask.shape[1] - 1, x2 + pad)
-    y2 = min(mask.shape[0] - 1, y2 + pad)
-    w = x2 - x1 + 1
-    h = y2 - y1 + 1
-    side = max(w, h)
-    cx = (x1 + x2) // 2
-    cy = (y1 + y2) // 2
-    x1 = max(0, cx - side // 2)
-    y1 = max(0, cy - side // 2)
-    x2 = min(mask.shape[1], x1 + side)
-    y2 = min(mask.shape[0], y1 + side)
-    img_c = img.crop((x1, y1, x2, y2)).resize((size, size), Image.BILINEAR)
-    mask_c = Image.fromarray((mask[y1:y2, x1:x2] * 255).astype(np.uint8)).resize(
-        (size, size), Image.NEAREST
-    )
-    return img_c, np.array(mask_c, dtype=np.uint8) // 255
-
-
 
 
 class SingleImageDataset(torch.utils.data.Dataset):
     def __init__(self, path: Path, background: Optional[Image.Image] = None):
         self.path = path
         img = Image.open(path).convert("RGB")
-        # Center-crop to a square so analysis can handle non-square inputs
+        # Resize to a square so analysis can handle non-square inputs
         size = min(img.width, img.height)
-        left = (img.width - size) // 2
-        top = (img.height - size) // 2
-        img = img.crop((left, top, left + size, top + size))
-        bg = None
-        if background is not None:
-            bg = background.crop((left, top, left + size, top + size))
-        self.img, _ = segment_screw(img, bg, size)
+        img = img.resize((size, size), Image.BILINEAR)
+        bg = background.resize((size, size), Image.BILINEAR) if background is not None else None
+        self.img, _ = segment_screw(img, bg)
         self.imagesize = size
         # Match the manifold distribution used during training.
         self.distribution = 2
@@ -264,7 +233,11 @@ def segment_screw(
     output_size: Optional[int] = None,
     threshold: int = 20,
 ):
-    """Segment the screw by subtracting a background model and thresholding."""
+    """Segment the screw by subtracting a background model and thresholding.
+
+    ``background`` is a median-composited image of the empty rig. ``output_size``
+    optionally resizes the full image and mask to this size.
+    """
     np_img = np.array(img)
     if background is not None:
         bg = background.resize(img.size)
@@ -282,7 +255,11 @@ def segment_screw(
     rgb[~mask] = 0
     out_img = Image.fromarray(rgb)
     if output_size is not None:
-        out_img, mask = _crop_to_bbox(out_img, mask, output_size)
+        out_img = out_img.resize((output_size, output_size), Image.BILINEAR)
+        mask_img = Image.fromarray(mask.astype(np.uint8) * 255).resize(
+            (output_size, output_size), Image.NEAREST
+        )
+        mask = np.array(mask_img, dtype=np.uint8) // 255
     return out_img, mask.astype(np.uint8)
 
 if __name__ == "__main__":

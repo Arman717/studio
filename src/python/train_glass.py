@@ -97,33 +97,6 @@ def _fill_holes(mask: np.ndarray) -> np.ndarray:
     return filled
 
 
-def _crop_to_bbox(img: Image.Image, mask: np.ndarray, size: int) -> Tuple[Image.Image, np.ndarray]:
-    ys, xs = np.where(mask)
-    if xs.size == 0 or ys.size == 0:
-        return img.resize((size, size)), np.array(Image.fromarray(mask * 255).resize((size, size), Image.NEAREST)) // 255
-    x1, x2 = xs.min(), xs.max()
-    y1, y2 = ys.min(), ys.max()
-    pad = 4
-    x1 = max(0, x1 - pad)
-    y1 = max(0, y1 - pad)
-    x2 = min(mask.shape[1] - 1, x2 + pad)
-    y2 = min(mask.shape[0] - 1, y2 + pad)
-    w = x2 - x1 + 1
-    h = y2 - y1 + 1
-    side = max(w, h)
-    cx = (x1 + x2) // 2
-    cy = (y1 + y2) // 2
-    x1 = max(0, cx - side // 2)
-    y1 = max(0, cy - side // 2)
-    x2 = min(mask.shape[1], x1 + side)
-    y2 = min(mask.shape[0], y1 + side)
-    img_c = img.crop((x1, y1, x2, y2)).resize((size, size), Image.BILINEAR)
-    mask_c = Image.fromarray((mask[y1:y2, x1:x2] * 255).astype(np.uint8)).resize(
-        (size, size), Image.NEAREST
-    )
-    return img_c, np.array(mask_c, dtype=np.uint8) // 255
-
-
 
 def segment_screw(
     img: Image.Image,
@@ -134,8 +107,8 @@ def segment_screw(
     """Segment the screw by subtracting a background model and thresholding.
 
     ``background`` is a median-composited image of the empty rig. ``output_size``
-    optionally crops a tight bounding box around the screw and resizes to this
-    size. Returns the segmented RGB image and the binary mask.
+    optionally resizes the full image and mask to this size. Returns the
+    segmented RGB image and the binary mask.
     """
     np_img = np.array(img)
     if background is not None:
@@ -154,16 +127,18 @@ def segment_screw(
     rgb[~mask] = 0
     out_img = Image.fromarray(rgb)
     if output_size is not None:
-        out_img, mask = _crop_to_bbox(out_img, mask, output_size)
+        out_img = out_img.resize((output_size, output_size), Image.BILINEAR)
+        mask_img = Image.fromarray(mask.astype(np.uint8) * 255).resize(
+            (output_size, output_size), Image.NEAREST
+        )
+        mask = np.array(mask_img, dtype=np.uint8) // 255
     return out_img, mask.astype(np.uint8)
 class ImageDataset(torch.utils.data.Dataset):
     def __init__(self, paths, background: Optional[list[str]] = None):
         self.paths = [Path(p) for p in paths]
         with Image.open(self.paths[0]) as first_img:
-            # Accept non-square inputs by center-cropping them to the
-            # largest possible square based on the first image. All
-            # subsequent images are cropped to this same size so the
-            # network sees a consistent resolution.
+            # Use the smaller dimension of the first image to determine the
+            # square resolution expected by the network.
             self.imagesize = min(first_img.width, first_img.height)
         self.background: Optional[Image.Image] = None
         if background:
@@ -174,10 +149,8 @@ class ImageDataset(torch.utils.data.Dataset):
                     raise ValueError(
                         f"Background image must be at least {self.imagesize}px in both dimensions"
                     )
-                left = (bg_img.width - self.imagesize) // 2
-                top = (bg_img.height - self.imagesize) // 2
-                bg_crop = bg_img.crop((left, top, left + self.imagesize, top + self.imagesize))
-                bg_arrays.append(np.array(bg_crop, dtype=np.uint8))
+                bg_resized = bg_img.resize((self.imagesize, self.imagesize), Image.BILINEAR)
+                bg_arrays.append(np.array(bg_resized, dtype=np.uint8))
             median = np.median(np.stack(bg_arrays, axis=0), axis=0).astype(np.uint8)
             self.background = Image.fromarray(median)
         # Spatial resolution of the segmentation mask expected by the GLASS
@@ -214,12 +187,10 @@ class ImageDataset(torch.utils.data.Dataset):
             raise ValueError(
                 f"Training images must be at least {self.imagesize}px in both dimensions"
             )
-        # Center-crop to the common square size determined from the first image
-        left = (img.width - self.imagesize) // 2
-        top = (img.height - self.imagesize) // 2
-        img = img.crop((left, top, left + self.imagesize, top + self.imagesize))
+        # Resize to the common square size determined from the first image
+        img = img.resize((self.imagesize, self.imagesize), Image.BILINEAR)
         bg = self.background
-        seg, mask = segment_screw(img, bg, self.imagesize)
+        seg, mask = segment_screw(img, bg)
         out_path = self.save_dir / f"{self.paths[idx].stem}.png"
         seg.save(out_path)
         tensor = self.tf(seg)
