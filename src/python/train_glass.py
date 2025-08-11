@@ -199,6 +199,11 @@ class ImageDataset(torch.utils.data.Dataset):
 def main() -> None:
     parser = argparse.ArgumentParser(description="Train GLASS model")
     parser.add_argument("--output", required=True, help="Output model path")
+    parser.add_argument(
+        "--backbone",
+        default="wideresnet101",
+        help="GLASS backbone name (e.g. wideresnet50, wideresnet101)",
+    )
     parser.add_argument("images", nargs="*", help="Training images")
     args = parser.parse_args()
 
@@ -250,7 +255,7 @@ def main() -> None:
 
     dataset = ImageDataset(args.images)
 
-    backbone = backbones.load("wideresnet50")
+    backbone = backbones.load(args.backbone)
     model = glass_mod.GLASS(device)
     # Hyperparameters align with the optimal configuration suggested in the
     # GLASS paper for unsupervised anomaly detection.
@@ -286,9 +291,15 @@ def main() -> None:
     dataloaders = {"training": loader, "testing": loader}
 
     model.set_model_dir(tempfile.mkdtemp(), "custom")
-    model.trainer(dataloaders["training"], dataloaders["testing"], "custom")
+    try:
+        model.trainer(dataloaders["training"], dataloaders["testing"], "custom")
+    except KeyboardInterrupt:
+        pass
 
     ckpt = Path(model.ckpt_dir) / "ckpt.pth"
+    if not ckpt.exists():
+        print("Training stopped before producing a checkpoint", file=sys.stderr)
+        sys.exit(1)
     shutil.copy(ckpt, args.output)
 
     print(json.dumps({"modelId": str(args.output)}))

@@ -122,6 +122,11 @@ def main() -> None:
     parser.add_argument("--image", required=True, help="Path to screw image")
     parser.add_argument("--model", required=True, help="Path to trained model")
     parser.add_argument(
+        "--backbone",
+        default="wideresnet101",
+        help="GLASS backbone name (e.g. wideresnet50, wideresnet101)",
+    )
+    parser.add_argument(
         "--output", help="Optional path to save the visualization overlay"
     )
     args = parser.parse_args()
@@ -140,7 +145,7 @@ def main() -> None:
     dataset = SingleImageDataset(Path(args.image))
     loader = torch.utils.data.DataLoader(dataset, batch_size=1, shuffle=False)
 
-    backbone = backbones.load("wideresnet50")
+    backbone = backbones.load(args.backbone)
     model = glass_mod.GLASS(device)
     # Use the hyperparameters recommended by the GLASS paper so the model
     # architecture matches the training configuration.

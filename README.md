@@ -2,20 +2,21 @@
 
 This is a NextJS starter in Firebase Studio.
 
-The AI features now use [CS-Flow](https://github.com/Arman717/cs-flow) for
-defect detection. The wrapper scripts in `src/python` automatically clone the
-CS-Flow repository if needed. Training produces a `*.pth` model file that is
-returned by the training flow. Pass this path to the analysis flow. Analysis
-returns a heatmap overlay image highlighting detected anomalies.
-Ensure your Python environment has the dependencies listed in CS-Flow's
-`requirements.txt` installed. In particular, `torch` and `torchvision` are
-required. OpenCV (`opencv-python-headless`) and `numpy` are also needed for
-automatic screw segmentation during training and inspection. Set the `PYTHON` environment
-variable if you want to use a custom Python interpreter. The scripts will
-automatically use CUDA if available, falling back to the CPU otherwise.
+The AI features now use [GLASS](https://github.com/cqylunlun/GLASS) for defect
+detection. The wrapper scripts in `src/python` automatically clone the GLASS
+repository if needed. Training produces a `*.pth` model file that is returned by
+the training flow. Pass this path to the analysis flow. Analysis returns a
+heatmap overlay image highlighting detected anomalies. Ensure your Python
+environment has the dependencies listed in GLASS's `requirements.txt`
+installed. In particular, `torch`, `torchvision`, `numpy`, and
+`opencv-python-headless` are needed for automatic screw segmentation during
+training and inspection. Set the `PYTHON` environment variable if you want to
+use a custom Python interpreter. The scripts will automatically use CUDA if
+available, falling back to the CPU otherwise.
 
-The training wrapper patches CS-Flow's `train.py` so AUROC remains a neutral
-0.5 when the dataset only contains one class and noisy warnings are suppressed.
+Training now saves a checkpoint even if interrupted and defaults to the
+`wideresnet101` backbone for improved performance. You can choose a different
+backbone by passing `--backbone` to `train_glass.py` and `analyze_glass.py`.
 
 Training and analysis logs from the Python scripts are streamed to your
 terminal when running the Next.js server so you can monitor progress.
