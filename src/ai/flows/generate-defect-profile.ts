@@ -15,7 +15,13 @@ const GenerateDefectProfileInputSchema = z.object({
   referenceImages: z
     .array(z.string())
     .describe(
-      'An array of images of defect-free screws, as data URIs that must include a MIME type and use Base64 encoding. Expected format: \'data:<mimetype>;base64,<encoded_data>\'.'      
+      'An array of images of defect-free screws, as data URIs that must include a MIME type and use Base64 encoding. Expected format: \'data:<mimetype>;base64,<encoded_data>\'.'
+    ),
+  backgroundImage: z
+    .string()
+    .optional()
+    .describe(
+      'Optional background photo, captured without the screw, used for background subtraction.'
     ),
 });
 export type GenerateDefectProfileInput = z.infer<typeof GenerateDefectProfileInputSchema>;
@@ -26,6 +32,6 @@ const GenerateDefectProfileOutputSchema = z.object({
 export type GenerateDefectProfileOutput = z.infer<typeof GenerateDefectProfileOutputSchema>;
 
 export async function generateDefectProfile(input: GenerateDefectProfileInput): Promise<GenerateDefectProfileOutput> {
-  const modelId = await trainGlass(input.referenceImages);
+  const modelId = await trainGlass(input.referenceImages, input.backgroundImage);
   return {modelId};
 }

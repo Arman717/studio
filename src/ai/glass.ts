@@ -52,7 +52,10 @@ export async function analyzeWithGlass(
   return JSON.parse(lines[lines.length - 1]);
 }
 
-export async function trainGlass(referenceImages: string[]): Promise<string> {
+export async function trainGlass(
+  referenceImages: string[],
+  backgroundImage?: string,
+): Promise<string> {
   const imagePaths: string[] = [];
   for (const img of referenceImages) {
     const [, data] = img.split(',');
@@ -61,13 +64,19 @@ export async function trainGlass(referenceImages: string[]): Promise<string> {
     await writeFile(path, buffer);
     imagePaths.push(path);
   }
+  let backgroundPath: string | undefined;
+  if (backgroundImage) {
+    const [, data] = backgroundImage.split(',');
+    const buffer = Buffer.from(data, 'base64');
+    backgroundPath = join(tmpdir(), `glass-bg-${Date.now()}.png`);
+    await writeFile(backgroundPath, buffer);
+  }
   const modelPath = join(tmpdir(), `glass-model-${Date.now()}.pth`);
-  const args = [
-    'src/python/train_glass.py',
-    '--output',
-    modelPath,
-    ...imagePaths,
-  ];
+  const args = ['src/python/train_glass.py', '--output', modelPath];
+  if (backgroundPath) {
+    args.push('--background', backgroundPath);
+  }
+  args.push(...imagePaths);
   const stdout = await runPython(args);
   const lines = stdout.trim().split(/\r?\n/);
   const result = JSON.parse(lines[lines.length - 1]);
