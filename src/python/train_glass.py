@@ -232,12 +232,20 @@ def main() -> None:
     dataset = ImageDataset(args.images)
 
     backbone = backbones.load("wideresnet50")
+    # Dynamically determine ResNet-style layer names present in the backbone.
+    layer_names = [name for name, _ in backbone.named_children() if name.startswith("layer")]
+    if len(layer_names) < 3:
+        raise ValueError(
+            f"Backbone {backbone.__class__.__name__} lacks expected ResNet layers: {layer_names}"
+        )
+    layers_to_extract_from = layer_names[1:3]
+
     model = glass_mod.GLASS(device)
     # Hyperparameters align with the optimal configuration suggested in the
     # GLASS paper for unsupervised anomaly detection.
     model.load(
         backbone=backbone,
-        layers_to_extract_from=["layer2", "layer3"],
+        layers_to_extract_from=layers_to_extract_from,
         device=device,
         input_shape=(3, dataset.imagesize, dataset.imagesize),
         pretrain_embed_dimension=1536,
