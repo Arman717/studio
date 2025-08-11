@@ -123,8 +123,8 @@ def main() -> None:
     parser.add_argument("--model", required=True, help="Path to trained model")
     parser.add_argument(
         "--backbone",
-        default="wideresnet101",
-        help="GLASS backbone name (e.g. wideresnet50, wideresnet101)",
+        default="efficientnet_b5",
+        help="GLASS backbone name (e.g. efficientnet_b5, wideresnet50)",
     )
     parser.add_argument(
         "--output", help="Optional path to save the visualization overlay"

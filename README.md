@@ -15,14 +15,14 @@ use a custom Python interpreter. The scripts will automatically use CUDA if
 available, falling back to the CPU otherwise.
 
 Training now saves a checkpoint even if interrupted and defaults to the
-`wideresnet101` backbone for improved performance. You can choose a different
+`efficientnet_b5` backbone for improved performance. You can choose a different
 backbone by passing `--backbone` to `train_glass.py` and `analyze_glass.py`.
 
 Training and analysis logs from the Python scripts are streamed to your
 terminal when running the Next.js server so you can monitor progress.
 
 During training, each captured image is automatically segmented to isolate the
-screw before it is used to train the CS-Flow model. Inspection snapshots are
+screw before it is used to train the GLASS model. Inspection snapshots are
 segmented the same way prior to analysis so the model focuses on relevant
 features of the screw.
 
