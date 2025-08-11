@@ -24,7 +24,8 @@ terminal when running the Next.js server so you can monitor progress.
 During training, each captured image is automatically segmented to isolate the
 screw before it is used to train the GLASS model. Inspection snapshots are
 segmented the same way prior to analysis so the model focuses on relevant
-features of the screw.
+features of the screw. The segmentation fills internal holes so dark
+anomalies on the screw are preserved.
 
 To get started, take a look at `src/app/page.tsx`.
 

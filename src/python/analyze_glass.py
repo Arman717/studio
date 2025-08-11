@@ -69,6 +69,21 @@ def _binary_close(mask: np.ndarray) -> np.ndarray:
     return _binary_erode(_binary_dilate(mask))
 
 
+def _fill_holes(mask: np.ndarray) -> np.ndarray:
+    """Fill interior holes in a binary mask using flood fill."""
+    padded = np.pad(mask, 1, constant_values=0)
+    h, w = padded.shape
+    stack = [(0, 0)]
+    while stack:
+        y, x = stack.pop()
+        if y < 0 or y >= h or x < 0 or x >= w or padded[y, x] != 0:
+            continue
+        padded[y, x] = 2
+        stack.extend([(y - 1, x), (y + 1, x), (y, x - 1), (y, x + 1)])
+    filled = padded != 2
+    return filled[1:-1, 1:-1]
+
+
 
 
 class SingleImageDataset(torch.utils.data.Dataset):
@@ -202,7 +217,7 @@ def main() -> None:
 
 
 def segment_screw(img: Image.Image):
-    """Segment the screw using Otsu thresholding and return image and mask."""
+    """Segment the screw using Otsu thresholding while keeping dark anomalies."""
     np_img = np.array(img)
     gray = np_img.mean(axis=2).astype(np.uint8)
     hist = np.bincount(gray.flatten(), minlength=256)
@@ -230,6 +245,7 @@ def segment_screw(img: Image.Image):
     if mask.mean() > 0.5:
         mask = gray < threshold
     mask = _binary_close(mask)
+    mask = _fill_holes(mask)
     rgb = np_img.copy()
     rgb[~mask] = 0
     return Image.fromarray(rgb), mask.astype(np.uint8)
