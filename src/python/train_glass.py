@@ -71,10 +71,21 @@ def _binary_close(mask: np.ndarray) -> np.ndarray:
 
 
 
-def segment_screw(img: Image.Image):
-    """Segment the screw using Otsu thresholding and return image and mask."""
+def segment_screw(img: Image.Image, background: Optional[Image.Image] = None):
+    """Segment the screw using Otsu thresholding.
+
+    If a background image without the screw is provided, it is first
+    subtracted from ``img`` to remove static scenery before thresholding.
+    Returns the segmented RGB image and the binary mask.
+    """
     np_img = np.array(img)
-    gray = np_img.mean(axis=2).astype(np.uint8)
+    if background is not None:
+        bg = background.resize(img.size)
+        np_bg = np.array(bg)
+        diff = np.abs(np_img.astype(np.int16) - np_bg.astype(np.int16))
+        gray = diff.mean(axis=2).astype(np.uint8)
+    else:
+        gray = np_img.mean(axis=2).astype(np.uint8)
     hist = np.bincount(gray.flatten(), minlength=256)
     total = gray.size
     sum_total = np.dot(np.arange(256), hist)
@@ -104,7 +115,7 @@ def segment_screw(img: Image.Image):
     rgb[~mask] = 0
     return Image.fromarray(rgb), mask.astype(np.uint8)
 class ImageDataset(torch.utils.data.Dataset):
-    def __init__(self, paths):
+    def __init__(self, paths, background: Optional[str] = None):
         self.paths = [Path(p) for p in paths]
         with Image.open(self.paths[0]) as first_img:
             # Accept non-square inputs by center-cropping them to the
@@ -112,6 +123,14 @@ class ImageDataset(torch.utils.data.Dataset):
             # subsequent images are cropped to this same size so the
             # network sees a consistent resolution.
             self.imagesize = min(first_img.width, first_img.height)
+        self.background: Optional[Image.Image] = None
+        if background is not None:
+            bg_img = Image.open(background).convert("RGB")
+            if bg_img.width < self.imagesize or bg_img.height < self.imagesize:
+                raise ValueError(
+                    f"Background image must be at least {self.imagesize}px in both dimensions"
+                )
+            self.background = bg_img
         # Spatial resolution of the segmentation mask expected by the GLASS
         # discriminator. This is determined dynamically from the backbone's
         # patch shape and therefore populated later by ``set_mask_shape`` once
@@ -150,7 +169,10 @@ class ImageDataset(torch.utils.data.Dataset):
         left = (img.width - self.imagesize) // 2
         top = (img.height - self.imagesize) // 2
         img = img.crop((left, top, left + self.imagesize, top + self.imagesize))
-        seg, mask = segment_screw(img)
+        bg = None
+        if self.background is not None:
+            bg = self.background.crop((left, top, left + self.imagesize, top + self.imagesize))
+        seg, mask = segment_screw(img, bg)
         out_path = self.save_dir / f"{self.paths[idx].stem}.png"
         seg.save(out_path)
         tensor = self.tf(seg)
@@ -181,6 +203,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Train GLASS model")
     parser.add_argument("--output", required=True, help="Output model path")
     parser.add_argument("images", nargs="*", help="Training images")
+    parser.add_argument(
+        "--background",
+        help="Image of the background without the screw for subtraction",
+    )
     args = parser.parse_args()
 
     if len(args.images) == 0:
@@ -229,7 +255,7 @@ def main() -> None:
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    dataset = ImageDataset(args.images)
+    dataset = ImageDataset(args.images, background=args.background)
 
     backbone = backbones.load("wideresnet50")
     # Dynamically determine ResNet-style layer names present in the backbone.
