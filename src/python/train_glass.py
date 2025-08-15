@@ -70,48 +70,89 @@ def _binary_close(mask: np.ndarray) -> np.ndarray:
     return _binary_erode(_binary_dilate(mask))
 
 
+def _binary_open(mask: np.ndarray) -> np.ndarray:
+    return _binary_dilate(_binary_erode(mask))
 
-def segment_screw(img: Image.Image):
-    """Segment the screw using Otsu thresholding and return image and mask."""
+
+def _fill_holes(mask: np.ndarray) -> np.ndarray:
+    from collections import deque
+
+    h, w = mask.shape
+    visited = np.zeros((h, w), dtype=bool)
+    q = deque()
+    for x in range(w):
+        q.append((0, x))
+        q.append((h - 1, x))
+    for y in range(h):
+        q.append((y, 0))
+        q.append((y, w - 1))
+    while q:
+        y, x = q.popleft()
+        if 0 <= y < h and 0 <= x < w and not visited[y, x] and mask[y, x] == 0:
+            visited[y, x] = True
+            q.extend([(y - 1, x), (y + 1, x), (y, x - 1), (y, x + 1)])
+    holes = (~visited) & (mask == 0)
+    filled = mask.copy()
+    filled[holes] = 1
+    return filled
+
+
+
+def segment_screw(
+    img: Image.Image,
+    background: Optional[Image.Image] = None,
+    output_size: Optional[int] = None,
+    threshold: int = 20,
+):
+    """Segment the screw by subtracting a background model and thresholding.
+
+    ``background`` is a median-composited image of the empty rig. ``output_size``
+    optionally resizes the full image and mask to this size. Returns the
+    segmented RGB image and the binary mask.
+    """
     np_img = np.array(img)
-    gray = np_img.mean(axis=2).astype(np.uint8)
-    hist = np.bincount(gray.flatten(), minlength=256)
-    total = gray.size
-    sum_total = np.dot(np.arange(256), hist)
-    sumB = 0.0
-    wB = 0.0
-    maximum = 0.0
-    threshold = 0
-    for i in range(256):
-        wB += hist[i]
-        if wB == 0:
-            continue
-        wF = total - wB
-        if wF == 0:
-            break
-        sumB += i * hist[i]
-        mB = sumB / wB
-        mF = (sum_total - sumB) / wF
-        between = wB * wF * (mB - mF) ** 2
-        if between > maximum:
-            maximum = between
-            threshold = i
+    if background is not None:
+        bg = background.resize(img.size)
+        np_bg = np.array(bg)
+        diff = np.abs(np_img.astype(np.int16) - np_bg.astype(np.int16))
+        gray = diff.mean(axis=2).astype(np.uint8)
+    else:
+        gray = np_img.mean(axis=2).astype(np.uint8)
     mask = gray > threshold
-    if mask.mean() > 0.5:
-        mask = gray < threshold
-    mask = _binary_close(mask)
+    mask = _binary_close(_binary_open(mask))
+    mask = _fill_holes(mask)
+    for _ in range(2):
+        mask = _binary_dilate(mask)
     rgb = np_img.copy()
     rgb[~mask] = 0
-    return Image.fromarray(rgb), mask.astype(np.uint8)
+    out_img = Image.fromarray(rgb)
+    if output_size is not None:
+        out_img = out_img.resize((output_size, output_size), Image.BILINEAR)
+        mask_img = Image.fromarray(mask.astype(np.uint8) * 255).resize(
+            (output_size, output_size), Image.NEAREST
+        )
+        mask = np.array(mask_img, dtype=np.uint8) // 255
+    return out_img, mask.astype(np.uint8)
 class ImageDataset(torch.utils.data.Dataset):
-    def __init__(self, paths):
+    def __init__(self, paths, background: Optional[list[str]] = None):
         self.paths = [Path(p) for p in paths]
         with Image.open(self.paths[0]) as first_img:
-            # Accept non-square inputs by center-cropping them to the
-            # largest possible square based on the first image. All
-            # subsequent images are cropped to this same size so the
-            # network sees a consistent resolution.
+            # Use the smaller dimension of the first image to determine the
+            # square resolution expected by the network.
             self.imagesize = min(first_img.width, first_img.height)
+        self.background: Optional[Image.Image] = None
+        if background:
+            bg_arrays = []
+            for p in background:
+                bg_img = Image.open(p).convert("RGB")
+                if bg_img.width < self.imagesize or bg_img.height < self.imagesize:
+                    raise ValueError(
+                        f"Background image must be at least {self.imagesize}px in both dimensions"
+                    )
+                bg_resized = bg_img.resize((self.imagesize, self.imagesize), Image.BILINEAR)
+                bg_arrays.append(np.array(bg_resized, dtype=np.uint8))
+            median = np.median(np.stack(bg_arrays, axis=0), axis=0).astype(np.uint8)
+            self.background = Image.fromarray(median)
         # Spatial resolution of the segmentation mask expected by the GLASS
         # discriminator. This is determined dynamically from the backbone's
         # patch shape and therefore populated later by ``set_mask_shape`` once
@@ -146,11 +187,10 @@ class ImageDataset(torch.utils.data.Dataset):
             raise ValueError(
                 f"Training images must be at least {self.imagesize}px in both dimensions"
             )
-        # Center-crop to the common square size determined from the first image
-        left = (img.width - self.imagesize) // 2
-        top = (img.height - self.imagesize) // 2
-        img = img.crop((left, top, left + self.imagesize, top + self.imagesize))
-        seg, mask = segment_screw(img)
+        # Resize to the common square size determined from the first image
+        img = img.resize((self.imagesize, self.imagesize), Image.BILINEAR)
+        bg = self.background
+        seg, mask = segment_screw(img, bg)
         out_path = self.save_dir / f"{self.paths[idx].stem}.png"
         seg.save(out_path)
         tensor = self.tf(seg)
@@ -181,6 +221,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Train GLASS model")
     parser.add_argument("--output", required=True, help="Output model path")
     parser.add_argument("images", nargs="*", help="Training images")
+    parser.add_argument(
+        "--background",
+        action="append",
+        help="Background image of the empty rig; specify multiple times to build a median model",
+    )
     args = parser.parse_args()
 
     if len(args.images) == 0:
@@ -229,15 +274,23 @@ def main() -> None:
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    dataset = ImageDataset(args.images)
+    dataset = ImageDataset(args.images, background=args.background)
 
     backbone = backbones.load("wideresnet50")
+    # Dynamically determine ResNet-style layer names present in the backbone.
+    layer_names = [name for name, _ in backbone.named_children() if name.startswith("layer")]
+    if len(layer_names) < 3:
+        raise ValueError(
+            f"Backbone {backbone.__class__.__name__} lacks expected ResNet layers: {layer_names}"
+        )
+    layers_to_extract_from = layer_names[1:3]
+
     model = glass_mod.GLASS(device)
     # Hyperparameters align with the optimal configuration suggested in the
     # GLASS paper for unsupervised anomaly detection.
     model.load(
         backbone=backbone,
-        layers_to_extract_from=["layer2", "layer3"],
+        layers_to_extract_from=layers_to_extract_from,
         device=device,
         input_shape=(3, dataset.imagesize, dataset.imagesize),
         pretrain_embed_dimension=1536,
@@ -271,6 +324,9 @@ def main() -> None:
 
     ckpt = Path(model.ckpt_dir) / "ckpt.pth"
     shutil.copy(ckpt, args.output)
+    if dataset.background is not None:
+        bg_out = Path(f"{args.output}.background.png")
+        dataset.background.save(bg_out)
 
     print(json.dumps({"modelId": str(args.output)}))
 
