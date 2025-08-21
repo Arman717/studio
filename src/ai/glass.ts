@@ -14,11 +14,12 @@ function run(cmd: string, args: string[]): Promise<string> {
       output += d.toString();
     });
     child.on('error', reject);
-    child.on('close', (code) => {
+    child.on('close', (code, signal) => {
       if (code === 0) {
         resolve(output);
       } else {
-        reject(new Error(`${cmd} exited with code ${code}`));
+        const reason = code !== null ? `code ${code}` : `signal ${signal}`;
+        reject(new Error(`${cmd} exited with ${reason}`));
       }
     });
   });
@@ -78,11 +79,33 @@ export async function trainGlass(
       backgroundPaths.push(path);
     }
   }
-  if (process.env.RUNPOD_HOST && process.env.RUNPOD_REPO) {
-    return await trainGlassRunpod(imagePaths, backgroundPaths);
+  if (
+    process.env.RUNPOD_HOST ||
+    process.env.RUNPOD_REPO ||
+    process.env.RUNPOD_USER ||
+    process.env.RUNPOD_KEY ||
+    process.env.RUNPOD_PORT
+  ) {
+    if (process.env.RUNPOD_HOST && process.env.RUNPOD_REPO) {
+      return await trainGlassRunpod(imagePaths, backgroundPaths);
+    }
+    throw new Error('RUNPOD_HOST and RUNPOD_REPO must be set for RunPod training');
   }
-  if (process.env.GCLOUD_PROJECT && process.env.GCS_BUCKET) {
-    return await trainGlassGCloud(imagePaths, backgroundPaths);
+  if (
+    process.env.GCLOUD_PROJECT ||
+    process.env.GCS_BUCKET ||
+    process.env.GCLOUD_REPO
+  ) {
+    if (
+      process.env.GCLOUD_PROJECT &&
+      process.env.GCS_BUCKET &&
+      process.env.GCLOUD_REPO
+    ) {
+      return await trainGlassGCloud(imagePaths, backgroundPaths);
+    }
+    throw new Error(
+      'GCLOUD_PROJECT, GCS_BUCKET, and GCLOUD_REPO must all be set for Google Cloud training',
+    );
   }
   const modelPath = join(tmpdir(), `glass-model-${Date.now()}.pth`);
   const args = ['src/python/train_glass.py', '--output', modelPath];
