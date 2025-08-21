@@ -152,8 +152,10 @@ class ImageDataset(torch.utils.data.Dataset):
         self.paths = [Path(p) for p in paths]
         first_img = _open_image(paths[0])
         # Use the smaller dimension of the first image to determine the
-        # square resolution expected by the network.
-        self.imagesize = min(first_img.width, first_img.height)
+        # square resolution expected by the network, but cap it to 1024px to
+        # avoid excessive memory usage that can terminate the training process
+        # on modest hardware.
+        self.imagesize = min(first_img.width, first_img.height, 1024)
         first_img.close()
         self.background: Optional[Image.Image] = None
         if background:
@@ -300,6 +302,21 @@ def main() -> None:
         )
     layers_to_extract_from = layer_names[1:3]
 
+    # Compute the total channel dimension produced by the selected layers so we
+    # can size the embedding layers accordingly.
+    with torch.no_grad():
+        feats = []
+        hooks = []
+        module_dict = dict(backbone.named_modules())
+        dummy = torch.zeros(1, 3, dataset.imagesize, dataset.imagesize)
+        for name in layers_to_extract_from:
+            layer = module_dict[name]
+            hooks.append(layer.register_forward_hook(lambda _m, _inp, out, store=feats: store.append(out)))
+        backbone(dummy)
+        for h in hooks:
+            h.remove()
+        embed_dim = sum(f.shape[1] for f in feats)
+
     model = glass_mod.GLASS(device)
     # Hyperparameters align with the optimal configuration suggested in the
     # GLASS paper for unsupervised anomaly detection.
@@ -308,8 +325,8 @@ def main() -> None:
         layers_to_extract_from=layers_to_extract_from,
         device=device,
         input_shape=(3, dataset.imagesize, dataset.imagesize),
-        pretrain_embed_dimension=1536,
-        target_embed_dimension=1536,
+        pretrain_embed_dimension=embed_dim,
+        target_embed_dimension=embed_dim,
         patchsize=3,
         meta_epochs=640,
         eval_epochs=1,
