@@ -78,6 +78,9 @@ export async function trainGlass(
       backgroundPaths.push(path);
     }
   }
+  if (process.env.RUNPOD_HOST && process.env.RUNPOD_REPO) {
+    return await trainGlassRunpod(imagePaths, backgroundPaths);
+  }
   if (process.env.GCLOUD_PROJECT && process.env.GCS_BUCKET) {
     return await trainGlassGCloud(imagePaths, backgroundPaths);
   }
@@ -91,6 +94,45 @@ export async function trainGlass(
   const lines = stdout.trim().split(/\r?\n/);
   const result = JSON.parse(lines[lines.length - 1]);
   return result.modelId;
+}
+
+async function trainGlassRunpod(imagePaths: string[], backgroundPaths: string[]): Promise<string> {
+  const host = process.env.RUNPOD_HOST!;
+  const port = process.env.RUNPOD_PORT ?? '22';
+  const user = process.env.RUNPOD_USER ?? 'root';
+  const key = process.env.RUNPOD_KEY ?? `${process.env.HOME ?? ''}/.ssh/id_ed25519`;
+  const repo = process.env.RUNPOD_REPO!;
+  const jobId = `glass-${Date.now()}`;
+  const remoteDir = `/tmp/${jobId}`;
+  const sshBase = ['-i', key, '-p', port, `${user}@${host}`];
+  await run('ssh', [...sshBase, 'mkdir', '-p', remoteDir]);
+  for (const p of imagePaths) {
+    await run('scp', ['-i', key, '-P', port, p, `${user}@${host}:${remoteDir}/${basename(p)}`]);
+  }
+  for (const p of backgroundPaths) {
+    await run('scp', ['-i', key, '-P', port, p, `${user}@${host}:${remoteDir}/${basename(p)}`]);
+  }
+  const remoteModel = `${remoteDir}/model.pth`;
+  const trainArgs = ['python3', 'src/python/train_glass.py', '--output', remoteModel];
+  for (const bg of backgroundPaths) {
+    trainArgs.push('--background', `${remoteDir}/${basename(bg)}`);
+  }
+  trainArgs.push(...imagePaths.map((p) => `${remoteDir}/${basename(p)}`));
+  const remoteCmd = [
+    `git clone ${repo} repo`,
+    'cd repo',
+    'pip install torch torchvision numpy Pillow >/dev/null',
+    trainArgs.join(' '),
+  ].join(' && ');
+  await run('ssh', [...sshBase, 'bash', '-lc', remoteCmd]);
+  const localModel = join(tmpdir(), `glass-model-${Date.now()}.pth`);
+  await run('scp', ['-i', key, '-P', port, `${user}@${host}:${remoteModel}`, localModel]);
+  const remoteBg = `${remoteModel}.background.png`;
+  const localBg = `${localModel}.background.png`;
+  await run('scp', ['-i', key, '-P', port, `${user}@${host}:${remoteBg}`, localBg]).catch(() => {
+    /* ignore missing background */
+  });
+  return localModel;
 }
 
 async function trainGlassGCloud(imagePaths: string[], backgroundPaths: string[]): Promise<string> {
