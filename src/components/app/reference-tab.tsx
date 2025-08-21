@@ -38,6 +38,7 @@ export function ReferenceTab({ onModelTrained }: ReferenceTabProps) {
   const [progress, setProgress] = useState(0);
   const [trainedModelId, setTrainedModelId] = useState<string | null>(null);
   const [captureDuration, setCaptureDuration] = useState(60);
+  const [backgroundImages, setBackgroundImages] = useState<string[]>([]);
   const [selecting, setSelecting] = useState(false);
   const [cropRect, setCropRect] = useState<{
     x: number;
@@ -123,6 +124,17 @@ export function ReferenceTab({ onModelTrained }: ReferenceTabProps) {
     return canvas.toDataURL("image/png");
   }
 
+  const captureBackground = async () => {
+    const frames: string[] = [];
+    for (let i = 0; i < 30; i++) {
+      const img = webcamRef.current?.getScreenshot();
+      if (img) frames.push(await cropImage(img));
+      await new Promise(res => setTimeout(res, 100));
+    }
+    setBackgroundImages(frames);
+    toast({ title: "Background captured", description: `${frames.length} frames` });
+  };
+
   const startProcess = async () => {
     setStatus("collecting");
     setProgress(0);
@@ -143,7 +155,7 @@ export function ReferenceTab({ onModelTrained }: ReferenceTabProps) {
       await sendCommand("A0");
       setStatus("training");
       try {
-        const result = await generateDefectProfile({ referenceImages: images });
+        const result = await generateDefectProfile({ referenceImages: images, backgroundImages: backgroundImages.length ? backgroundImages : undefined });
         setTrainedModelId(result.modelId);
         onModelTrained(result.modelId);
         toast({
@@ -264,24 +276,19 @@ export function ReferenceTab({ onModelTrained }: ReferenceTabProps) {
           </div>
         )}
       </CardContent>
-      <CardFooter className="flex flex-col gap-4">
+  <CardFooter className="flex flex-col gap-4">
+        <Button onClick={captureBackground} disabled={status !== "idle"} className="w-full" variant="outline">
+          {backgroundImages.length ? `Retake Background (${backgroundImages.length})` : "Capture Background"}
+        </Button>
         <div className="flex items-center gap-2 w-full">
-
-
           <label className="text-sm whitespace-nowrap text-black" htmlFor="trainTime">Training Time (s)</label>
-
-
           <input
             id="trainTime"
             type="number"
             min={1}
-
-
             className="border rounded px-2 py-1 flex-grow"
             value={captureDuration}
             onChange={e => setCaptureDuration(Number(e.target.value))}
-
-
             disabled={status !== "idle"}
           />
         </div>
