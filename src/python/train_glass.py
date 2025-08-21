@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import os
+import io
 from pathlib import Path
 from typing import Optional, Tuple
 
@@ -28,6 +29,19 @@ try:
 except ModuleNotFoundError:
     print("Missing dependency numpy.", file=sys.stderr)
     raise
+
+
+def _open_image(path: str) -> Image.Image:
+    """Open an image from local disk or Google Cloud Storage."""
+    if path.startswith("gs://"):
+        from google.cloud import storage  # type: ignore
+
+        client = storage.Client()
+        bucket_name, blob_name = path[5:].split("/", 1)
+        bucket = client.bucket(bucket_name)
+        data = bucket.blob(blob_name).download_as_bytes()
+        return Image.open(io.BytesIO(data)).convert("RGB")
+    return Image.open(path).convert("RGB")
 
 
 def ensure_repo(repo_dir: Path) -> None:
@@ -136,15 +150,18 @@ def segment_screw(
 class ImageDataset(torch.utils.data.Dataset):
     def __init__(self, paths, background: Optional[list[str]] = None):
         self.paths = [Path(p) for p in paths]
-        with Image.open(self.paths[0]) as first_img:
-            # Use the smaller dimension of the first image to determine the
-            # square resolution expected by the network.
-            self.imagesize = min(first_img.width, first_img.height)
+        first_img = _open_image(paths[0])
+        # Use the smaller dimension of the first image to determine the
+        # square resolution expected by the network, but cap it to 1024px to
+        # avoid excessive memory usage that can terminate the training process
+        # on modest hardware.
+        self.imagesize = min(first_img.width, first_img.height, 1024)
+        first_img.close()
         self.background: Optional[Image.Image] = None
         if background:
             bg_arrays = []
             for p in background:
-                bg_img = Image.open(p).convert("RGB")
+                bg_img = _open_image(p)
                 if bg_img.width < self.imagesize or bg_img.height < self.imagesize:
                     raise ValueError(
                         f"Background image must be at least {self.imagesize}px in both dimensions"
@@ -182,7 +199,7 @@ class ImageDataset(torch.utils.data.Dataset):
         self.mask_shape = shape
 
     def __getitem__(self, idx: int):
-        img = Image.open(self.paths[idx]).convert("RGB")
+        img = _open_image(str(self.paths[idx]))
         if img.width < self.imagesize or img.height < self.imagesize:
             raise ValueError(
                 f"Training images must be at least {self.imagesize}px in both dimensions"
@@ -285,6 +302,21 @@ def main() -> None:
         )
     layers_to_extract_from = layer_names[1:3]
 
+    # Compute the total channel dimension produced by the selected layers so we
+    # can size the embedding layers accordingly.
+    with torch.no_grad():
+        feats = []
+        hooks = []
+        module_dict = dict(backbone.named_modules())
+        dummy = torch.zeros(1, 3, dataset.imagesize, dataset.imagesize)
+        for name in layers_to_extract_from:
+            layer = module_dict[name]
+            hooks.append(layer.register_forward_hook(lambda _m, _inp, out, store=feats: store.append(out)))
+        backbone(dummy)
+        for h in hooks:
+            h.remove()
+        embed_dim = sum(f.shape[1] for f in feats)
+
     model = glass_mod.GLASS(device)
     # Hyperparameters align with the optimal configuration suggested in the
     # GLASS paper for unsupervised anomaly detection.
@@ -293,8 +325,8 @@ def main() -> None:
         layers_to_extract_from=layers_to_extract_from,
         device=device,
         input_shape=(3, dataset.imagesize, dataset.imagesize),
-        pretrain_embed_dimension=1536,
-        target_embed_dimension=1536,
+        pretrain_embed_dimension=embed_dim,
+        target_embed_dimension=embed_dim,
         patchsize=3,
         meta_epochs=640,
         eval_epochs=1,
@@ -323,10 +355,28 @@ def main() -> None:
     model.trainer(dataloaders["training"], dataloaders["testing"], "custom")
 
     ckpt = Path(model.ckpt_dir) / "ckpt.pth"
-    shutil.copy(ckpt, args.output)
+    if args.output.startswith("gs://"):
+        from google.cloud import storage  # type: ignore
+
+        client = storage.Client()
+        bucket_name, blob_name = args.output[5:].split("/", 1)
+        bucket = client.bucket(bucket_name)
+        bucket.blob(blob_name).upload_from_filename(str(ckpt))
+    else:
+        shutil.copy(ckpt, args.output)
     if dataset.background is not None:
-        bg_out = Path(f"{args.output}.background.png")
-        dataset.background.save(bg_out)
+        bg_out = f"{args.output}.background.png"
+        if bg_out.startswith("gs://"):
+            from google.cloud import storage  # type: ignore
+
+            client = storage.Client()
+            bucket_name, blob_name = bg_out[5:].split("/", 1)
+            bucket = client.bucket(bucket_name)
+            with tempfile.NamedTemporaryFile(suffix=".png") as tmp:
+                dataset.background.save(tmp.name)
+                bucket.blob(blob_name).upload_from_filename(tmp.name)
+        else:
+            dataset.background.save(bg_out)
 
     print(json.dumps({"modelId": str(args.output)}))
 
