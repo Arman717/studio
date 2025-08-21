@@ -3,17 +3,19 @@
 import { SerialPort } from 'serialport'
 
 let port: SerialPort | null = null
-const baudRate = 9600
+// STM32 firmware uses a 115200 baud serial connection
+const baudRate = 115200
 
 /**
- * Gibt immer 'COM6' zurück – der Arduino-Port.
+ * Resolves the serial port to use for the STM32 board.
+ * Uses the STM32_PORT env variable or falls back to `COM7`.
  */
 async function resolvePortPath(): Promise<string> {
-  return 'COM6'
+  return process.env.STM32_PORT || 'COM7'
 }
 
 /**
- * Öffnet den seriellen Port mit 9600 Baud.
+ * Öffnet den seriellen Port mit 115200 Baud.
  */
 async function createPort() {
   const path = await resolvePortPath()
